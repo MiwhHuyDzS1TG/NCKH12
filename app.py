@@ -812,8 +812,8 @@ def _p21b_validation_dashboard() -> None:
 
 def _p22a_dashboard() -> None:
     """Minimal human-ground-truth workflow for controlled-reading calibration."""
-    from speaking_evidence.p22 import (ASR_AUDIT_IDS, DISCLAIMER, calibrate, compare_asr_models,
-        confirm_target, generate_selected_evidence, save_asr_reference, save_rating)
+    from speaking_evidence.p22 import (ASR_AUDIT_IDS, DISCLAIMER, calibrate, calibration_readiness,
+        compare_asr_models, confirm_target, generate_selected_evidence, save_asr_reference, save_rating)
 
     target_path = ROOT / "task_profiles" / "T001_target_text_v1.json"
     ground = ROOT / "human_ground_truth" / "p22a_v1"
@@ -911,11 +911,15 @@ def _p22a_dashboard() -> None:
         target = json.loads(target_path.read_text(encoding="utf-8"))
         ratings = json.loads((ground / "ratings_v1.json").read_text(encoding="utf-8"))["items"]
         usable = [x for x in ratings if x["human_confirmed"] and x["amber_scorability"] != "NOT_SCORABLE"]
+        readiness = calibration_readiness(ratings)
         evidence_ready = (evidence / "selected_backend_evidence_summary.json").is_file()
         st.write(f"Nhãn chấm được: {len(usable)} · Văn bản mẫu xác nhận: {target['human_confirmed']} · ASR đã chọn: {evidence_ready}")
-        if len(usable) < 8:
-            st.info("Cần ít nhất 8 video có nhãn người để thử ánh xạ phát triển ban đầu.")
-        ready = len(usable) >= 8 and target["human_confirmed"] and evidence_ready
+        if readiness["status"] != "READY_FOR_DEVELOPMENT_CALIBRATION":
+            st.info("WAITING FOR HUMAN CALIBRATION")
+            for reason in readiness["reasons"]:
+                st.caption(reason)
+        ready = (readiness["status"] == "READY_FOR_DEVELOPMENT_CALIBRATION"
+                 and target["human_confirmed"] and evidence_ready)
         if st.button("Tạo hiệu chỉnh phát triển v0.1", disabled=not ready):
             result = calibrate(ground, evidence, target_path, calibration, evidence)
             st.json(result)
@@ -926,12 +930,140 @@ def _p22a_dashboard() -> None:
             st.caption("Chưa có điểm. Prosody sẽ đứng riêng; Overall chỉ xuất hiện khi các ánh xạ bắt buộc đủ căn cứ.")
 
 
+def _teacher_rating_dashboard() -> None:
+    """Focused, machine-score-blind teacher workflow with persistent JSON saves."""
+    from speaking_evidence.p22 import save_rating
+
+    ground = ROOT / "human_ground_truth" / "p22a_v1"
+    evidence = ROOT / "assessment_runs" / "T001_p22_calibrated_v01"
+    ratings_path = ground / "ratings_v1.json"
+    st.title("Teacher Rating — P2.2A")
+    if not ratings_path.is_file():
+        st.error("Chưa có hàng chờ 12 video.")
+        return
+    payload = json.loads(ratings_path.read_text(encoding="utf-8"))
+    items = payload["items"]
+    completed = [item for item in items if item.get("human_confirmed")]
+    st.progress(len(completed) / len(items), text=f"Tiến độ: {len(completed)} / {len(items)}")
+    st.caption("Chấm phần học sinh nói. 1 = rất yếu, 3 = trung bình, 5 = rất tốt. Không chấm ngữ pháp hay từ vựng.")
+
+    pair_ids = [item["pair_id"] for item in items]
+    first_pending = next((index for index, item in enumerate(items) if not item.get("human_confirmed")), 0)
+    if "teacher_rating_index" not in st.session_state:
+        st.session_state["teacher_rating_index"] = first_pending
+    selected_id = st.selectbox("Video", pair_ids,
+                               index=min(st.session_state["teacher_rating_index"], len(items) - 1),
+                               key="teacher_rating_pair")
+    index = pair_ids.index(selected_id)
+    item = items[index]
+    raw_path = evidence / "pairs" / selected_id / "raw_evidence.json"
+    raw = json.loads(raw_path.read_text(encoding="utf-8"))
+    st.video(raw["raw_duet_path"])
+    st.audio(str(evidence / raw["model_input_ref"]))
+
+    if item["quality_gate"] == "AMBER":
+        existing = item.get("amber_scorability")
+        choices = [None, "SCORABLE", "NOT_SCORABLE"]
+        scorability = st.selectbox("SCORABLE / NOT SCORABLE", choices,
+                                   index=choices.index(existing) if existing in choices else 0,
+                                   format_func=lambda value: "— Chọn —" if value is None else value,
+                                   key=f"teacher_scorability_{selected_id}")
+    else:
+        scorability = "SCORABLE"
+
+    scores: dict[str, int] = {}
+    if scorability != "NOT_SCORABLE":
+        for name, label in (("fluency", "Fluency 1–5"),
+                            ("intelligibility", "Intelligibility 1–5"),
+                            ("prosody", "Prosody 1–5")):
+            options = [None, 1, 2, 3, 4, 5]
+            existing_score = item.get(name)
+            value = st.selectbox(label, options,
+                                 index=options.index(existing_score) if existing_score in options else 0,
+                                 format_func=lambda score: "— Chọn điểm —" if score is None else str(score),
+                                 key=f"teacher_{name}_{selected_id}")
+            if isinstance(value, int):
+                scores[name] = value
+    note = st.text_input("Ghi chú ngắn (không bắt buộc)", value=item.get("note", ""),
+                         key=f"teacher_note_{selected_id}")
+    scores_ready = scorability == "NOT_SCORABLE" or all(name in scores for name in ("fluency", "intelligibility", "prosody"))
+    save_disabled = scorability is None or not scores_ready
+    if st.button("Save & Next", type="primary", disabled=save_disabled, key=f"teacher_save_{selected_id}"):
+        save_rating(ratings_path, selected_id, scorability, scores, note, True)
+        refreshed = json.loads(ratings_path.read_text(encoding="utf-8"))["items"]
+        next_pending = next((i for i, row in enumerate(refreshed) if not row.get("human_confirmed")),
+                            min(index + 1, len(items) - 1))
+        st.session_state["teacher_rating_index"] = next_pending
+        st.session_state.pop("teacher_rating_pair", None)
+        st.rerun()
+    if len(completed) == len(items):
+        st.success("Đã lưu đủ 12/12. Dữ liệu vẫn còn sau khi tắt/mở lại app.")
+
+
+def _phase2_assessment_result_dashboard() -> None:
+    """Evidence-first result page that never displays an uncalibrated numeric score."""
+    from speaking_evidence.p22 import DISCLAIMER, RATING_IDS
+
+    evidence_root = ROOT / "assessment_runs" / "T001_p22_calibrated_v01"
+    ratings_path = ROOT / "human_ground_truth" / "p22a_v1" / "ratings_v1.json"
+    st.title("Phase 2 Assessment Result")
+    st.warning(" · ".join(DISCLAIMER))
+    pair_id = st.selectbox("Learner", list(RATING_IDS), key="p22_result_pair")
+    evidence_path = evidence_root / "pairs" / pair_id / "evidence.json"
+    if not evidence_path.is_file():
+        st.error("Chưa có machine evidence cho video này.")
+        return
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    turn = evidence["turns"][0]
+    st.subheader("Transcript")
+    st.write(turn["transcript"]["verbatim_transcript"])
+    st.subheader("Fluency evidence")
+    st.json(evidence["aggregate_fluency_evidence"])
+    st.subheader("Intelligibility evidence")
+    probabilities = [word.get("probability") for word in turn["transcript"].get("words", [])
+                     if word.get("probability") is not None]
+    st.json({"mean_word_probability": sum(probabilities) / len(probabilities) if probabilities else None,
+             "word_count_with_probability": len(probabilities),
+             "note": "Recognition evidence only; an ASR mismatch is not a pronunciation error."})
+    st.subheader("ASR-assisted Reading Completeness")
+    completeness_path = evidence_root / "pairs" / pair_id / "reading_completeness_v1.json"
+    if completeness_path.is_file():
+        completeness = json.loads(completeness_path.read_text(encoding="utf-8"))
+        st.json({key: completeness.get(key) for key in
+                 ("coverage", "matched_sequence", "omissions", "insertions", "transcript_source", "warning")})
+    else:
+        st.info("WAITING FOR TARGET CONFIRMATION OR COMPLETENESS PREPARATION")
+    st.subheader("Prosody evidence")
+    st.json(turn["acoustic"])
+
+    summary_path = evidence_root / "calibration_summary.json"
+    if not summary_path.is_file():
+        completed = 0
+        if ratings_path.is_file():
+            ratings = json.loads(ratings_path.read_text(encoding="utf-8"))["items"]
+            completed = sum(item.get("human_confirmed") is True for item in ratings)
+        st.error("WAITING FOR HUMAN CALIBRATION")
+        st.caption(f"Human ratings: {completed}/12. Không có numeric score giả.")
+        return
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    score = next((item for item in summary.get("scores", []) if item["pair_id"] == pair_id), None)
+    if not score:
+        st.error("WAITING FOR HUMAN CALIBRATION")
+    else:
+        st.subheader("Score / status")
+        st.json(score)
+
+
 current_config = _sidebar_config()
 if st.query_params.get("mode") == "p21b" and "lab_workspace_mode" not in st.session_state:
     st.session_state["lab_workspace_mode"] = "P2.1b Validation"
 if st.query_params.get("mode") == "p22a" and "lab_workspace_mode" not in st.session_state:
     st.session_state["lab_workspace_mode"] = "P2.2A Calibration"
-workspace_mode = st.sidebar.radio("Workspace mode", ["Individual Research Console", "Cohort P1.4", "Phase 2 Evidence", "P2.1b Validation", "P2.2A Calibration"],
+if st.query_params.get("mode") == "teacher" and "lab_workspace_mode" not in st.session_state:
+    st.session_state["lab_workspace_mode"] = "Teacher Rating — P2.2A"
+if st.query_params.get("mode") == "p22result" and "lab_workspace_mode" not in st.session_state:
+    st.session_state["lab_workspace_mode"] = "Phase 2 Assessment Result"
+workspace_mode = st.sidebar.radio("Workspace mode", ["Individual Research Console", "Cohort P1.4", "Phase 2 Evidence", "P2.1b Validation", "P2.2A Calibration", "Teacher Rating — P2.2A", "Phase 2 Assessment Result"],
                                   key="lab_workspace_mode")
 if workspace_mode == "Cohort P1.4":
     _cohort_dashboard(current_config)
@@ -944,6 +1076,12 @@ if workspace_mode == "P2.1b Validation":
     st.stop()
 if workspace_mode == "P2.2A Calibration":
     _p22a_dashboard()
+    st.stop()
+if workspace_mode == "Teacher Rating — P2.2A":
+    _teacher_rating_dashboard()
+    st.stop()
+if workspace_mode == "Phase 2 Assessment Result":
+    _phase2_assessment_result_dashboard()
     st.stop()
 _run_history()
 _input_panel(current_config)

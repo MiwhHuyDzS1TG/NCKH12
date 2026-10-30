@@ -3,10 +3,13 @@ import json
 from pathlib import Path
 
 import pytest
+from streamlit.testing.v1 import AppTest
 
 from speaking_evidence.audio import sha256_file
 from speaking_evidence.p22 import (AMBER_IDS, ASR_AUDIT_IDS, DISCLAIMER, GREEN_IDS, RATING_IDS,
-    align_completeness, apply_mapping, compare_asr_models, confirm_target, fit_ridge_mapping,
+    WAITING_FOR_HUMAN_CALIBRATION, WAITING_FOR_TARGET_CONFIRMATION, align_completeness,
+    apply_mapping, calibrate, calibration_readiness, compare_asr_models, confirm_target,
+    fit_ridge_mapping, freeze_machine_features, generate_completeness_evidence,
     save_asr_reference, save_rating)
 
 
@@ -85,6 +88,11 @@ def test_rating_save_does_not_modify_raw_evidence(tmp_path):
                         "intelligibility": 3, "prosody": 4}, "learner repeated a line", True)
     assert (saved["fluency"], saved["intelligibility"], saved["prosody"]) == (2, 3, 4)
     assert saved["note"] == "learner repeated a line"
+    restarted_payload = json.loads(rating_path.read_text(encoding="utf-8"))
+    restarted_item = restarted_payload["items"][0]
+    assert restarted_item["human_confirmed"] is True
+    assert (restarted_item["fluency"], restarted_item["intelligibility"],
+            restarted_item["prosody"]) == (2, 3, 4)
     assert hashlib.sha256(raw.read_bytes()).hexdigest() == digest
 
 
@@ -119,3 +127,84 @@ def test_target_confirmation_keeps_machine_candidate(tmp_path):
     assert result["machine_candidate"] == "machine words"
     assert result["confirmed_text"] == "Human heard words exactly."
     assert result["human_confirmed"] is True
+
+
+def test_completeness_waits_for_confirmed_target(tmp_path):
+    target = tmp_path / "target.json"
+    target.write_text(json.dumps({"human_confirmed": False, "confirmed_text": None}), encoding="utf-8")
+    result = generate_completeness_evidence(tmp_path / "ground", tmp_path / "evidence", target)
+    assert result["status"] == WAITING_FOR_TARGET_CONFIRMATION
+    assert result["processed_ids"] == []
+
+
+def test_calibration_waits_without_human_labels_and_writes_no_scores(tmp_path):
+    ground = tmp_path / "ground"
+    ground.mkdir()
+    ratings = [{"pair_id": pair_id, "quality_gate": "GREEN", "amber_scorability": "NOT_REQUIRED",
+                "fluency": None, "intelligibility": None, "prosody": None,
+                "human_confirmed": False} for pair_id in RATING_IDS]
+    (ground / "ratings_v1.json").write_text(json.dumps({"holdout_used": False, "items": ratings}),
+                                             encoding="utf-8")
+    target = tmp_path / "target.json"
+    target.write_text(json.dumps({"human_confirmed": True, "confirmed_text": "one two"}),
+                      encoding="utf-8")
+    output = tmp_path / "output"
+    result = calibrate(ground, tmp_path / "evidence", target, tmp_path / "calibration", output)
+    assert result["status"] == WAITING_FOR_HUMAN_CALIBRATION
+    assert result["scores"] == []
+    assert not (output / "calibration_summary.json").exists()
+
+
+def test_calibration_gate_rejects_non_queue_id_and_requires_variation():
+    rows = [{"pair_id": pair_id, "human_confirmed": True, "amber_scorability": "NOT_REQUIRED",
+             "fluency": 3, "intelligibility": 3, "prosody": 3} for pair_id in RATING_IDS[:8]]
+    waiting = calibration_readiness(rows)
+    assert waiting["status"] == WAITING_FOR_HUMAN_CALIBRATION
+    assert any("distinct" in reason for reason in waiting["reasons"])
+    with pytest.raises(ValueError, match="non-development"):
+        calibration_readiness(rows + [{**rows[0], "pair_id": "T001-D001"}])
+
+
+@pytest.mark.skipif(not Path("assessment_runs/T001_p22_calibrated_v01/selected_backend_evidence_summary.json").is_file(),
+                    reason="private real-media development artifacts are not distributed")
+def test_p22b_prepared_artifacts_are_development_only_and_raw_source():
+    evidence = Path("assessment_runs/T001_p22_calibrated_v01")
+    completeness = json.loads((evidence / "reading_completeness_summary_v1.json").read_text(encoding="utf-8"))
+    frozen = json.loads(Path("calibration/p22b_prep_v01/feature_spec_v1.json").read_text(encoding="utf-8"))
+    assert completeness["processed_ids"] == list(RATING_IDS)
+    assert completeness["holdout_processed"] is False
+    assert completeness["score_created"] is False
+    assert frozen["status"] == "FROZEN_PRE_HUMAN_CALIBRATION"
+    assert frozen["rating_count_read"] == 0
+    assert frozen["holdout_processed"] is False
+    assert frozen["specification"]["canonical_audio_source_required"] == "RAW_COMPLETED_DUET"
+    assert all(item["intelligibility"]["recognition_stability"] is None for item in frozen["items"])
+    ratings = json.loads(Path("human_ground_truth/p22a_v1/ratings_v1.json").read_text(encoding="utf-8"))
+    assert all(not item["human_confirmed"] and item["fluency"] is None for item in ratings["items"])
+
+
+@pytest.mark.skipif(not Path("human_ground_truth/p22a_v1/ratings_v1.json").is_file(),
+                    reason="private human workflow artifacts are not distributed")
+def test_phase2_result_ui_shows_waiting_without_numeric_score():
+    app = AppTest.from_file(str(Path(__file__).parents[1] / "app.py"), default_timeout=60)
+    app.query_params["mode"] = "p22result"
+    app.run()
+    assert not app.exception
+    messages = [element.value for element in app.error]
+    assert "WAITING FOR HUMAN CALIBRATION" in messages
+    assert not Path("assessment_runs/T001_p22_calibrated_v01/calibration_summary.json").exists()
+
+
+@pytest.mark.skipif(not Path("human_ground_truth/p22a_v1/ratings_v1.json").is_file(),
+                    reason="private human workflow artifacts are not distributed")
+def test_teacher_rating_page_is_focused_and_machine_score_blind():
+    app = AppTest.from_file(str(Path(__file__).parents[1] / "app.py"), default_timeout=60)
+    app.query_params["mode"] = "teacher"
+    app.run()
+    assert not app.exception
+    assert any(title.value == "Teacher Rating — P2.2A" for title in app.title)
+    assert any(button.label == "Save & Next" for button in app.button)
+    rendered = " ".join(str(element.value) for group in
+                        (app.title, app.caption, app.markdown, app.info, app.warning, app.error)
+                        for element in group)
+    assert "machine score" not in rendered.lower()

@@ -1135,3 +1135,49 @@ The gains are not additive guarantees. Achieving all milestones well supports th
 
 Complete the 12-video speaking rating queue in the existing P2.2A UI, then run and inspect the development-only calibration. This is the shortest path from 54/100 to a defensible first controlled-reading score.
 
+---
+
+# P2.2B-PREP — READY FOR HUMAN CALIBRATION (2026-10-30)
+
+This preparation sprint makes the existing development-only scorer ready to run immediately after the teacher completes the 12-video queue. It creates no human labels and no numeric learner score. The fixed 18-video holdout was not opened, processed, or used; only the saved split membership was checked.
+
+## Verified starting state
+
+- Phase 1 source and tests remain operational. The fixed split is still exactly 50 development / 18 holdout, with no overlap.
+- P2.1 evidence and the P2.1b AI-assisted T001 TaskProfile exist. The latter retains its explicit AI-assisted/non-human provenance.
+- All six human ASR references are `HUMAN_CONFIRMED`.
+- The measured six-reference comparison still selects `small.en` (micro-WER 5.51% versus 7.83% for `medium.en`).
+- T001 target text is `HUMAN_CONFIRMED` with 142 words.
+- Selected-backend evidence exists for all 12 development rating IDs and explicitly records `holdout_processed=false`.
+- The human speaking queue is still 0/12. `calibration_summary.json` does not exist; no calibrated score exists.
+
+## Completeness and frozen machine evidence
+
+- `speaking_evidence.p22.generate_completeness_evidence` now requires a human-confirmed target. Without it, the function returns `WAITING_FOR_TARGET_CONFIRMATION` and creates no final completeness evidence.
+- Versioned `ASR-assisted Reading Completeness` evidence was prepared for all 12 development videos at `assessment_runs/T001_p22_calibrated_v01/pairs/*/reading_completeness_v1.json`, with target words, learner words, matched sequence, omissions, insertions, coverage, transcript source, and an explicit warning that ASR differences are not proven learner or pronunciation errors. This is evidence, not a score.
+- Pre-declared machine features were frozen before human ratings at `calibration/p22b_prep_v01/feature_spec_v1.json`. It contains the seven requested fluency features, ASR word probabilities and fixed low-confidence fraction, available recognition-confidence evidence, and existing Parselmouth f0/intensity/voicing evidence. Recognition stability is explicitly `NOT_AVAILABLE_SINGLE_PASS` rather than invented.
+- The feature artifact records `rating_count_read=0`, `holdout_processed=false`, raw completed Duet as the required canonical source, and a source-evidence hash for every development item. Feature selection was not based on teacher labels.
+
+## Calibration and UI readiness
+
+- Calibration is gated on at least eight human-confirmed SCORABLE videos, at least three distinct label levels for each teacher-rated criterion, development-queue IDs only, selected evidence marked non-holdout, and raw completed Duet provenance.
+- Before those gates pass, the engine returns `WAITING_FOR_HUMAN_CALIBRATION`, emits an empty score list, and does not write a calibration-score artifact.
+- The simple deterministic ridge mapping remains pre-declared. Leave-one-out output now includes MAE, predicted-versus-human rows, within-one-band agreement, and Spearman correlation when defined. No neural model or post-label feature selection is used.
+- A focused `Teacher Rating — P2.2A` page shows only raw video/audio, AMBER scorability when needed, three 1–5 teacher ratings, an optional note, `Save & Next`, and persistent X/12 progress. It does not show a machine score.
+- `START_TEACHER_RATING.bat` starts the local app and opens `http://127.0.0.1:8501/?mode=teacher`. Ratings are written immediately to the existing JSON path and survive app restarts.
+- A separate `Phase 2 Assessment Result` page shows transcript, Fluency/Intelligibility/Completeness/Prosody evidence, and `WAITING FOR HUMAN CALIBRATION` while no calibrated artifact exists. It cannot display a fabricated numeric score. It always shows `DEVELOPMENT / PRELIMINARY CALIBRATION`, `NOT CEFR`, `NOT B2`, and `NOT IELTS`.
+
+## Verification and current gate
+
+- Full normal suite: **56 passed, 3 skipped**.
+- Python compilation passed for the modified app and calibration module.
+- Tests cover holdout exclusion, no score without human ratings, no placeholder labels, target-confirmation gating, raw completed Duet provenance, non-pronunciation interpretation of ASR mismatch, waiting UI, persistent rating saves, deterministic mapping, and absence of proficiency claims beyond required `NOT ...` disclaimers.
+- Competition readiness remains **54/100**. Preparation code does not count as completed human calibration or an actual score.
+
+**Infrastructure status:** ready.
+
+**Calibrated score:** not available.
+
+**Current blocker:** teacher completes the 12-video human rating queue.
+**Next action:** after ratings are saved, run development calibration once, inspect its label variation and leave-one-out diagnostics, then review the first real preliminary scores. Do not use holdout or start feedback/pronunciation work in this sprint.
+

@@ -19,6 +19,7 @@ from speaking_evidence.runner import gate_status, load_development, write_json
 from speaking_evidence.wer import word_error_counts, words_for_wer
 
 VERSION = "P2.2A-v0.1"
+PREP_VERSION = "P2.2B-PREP-v0.1"
 ASR_AUDIT_IDS = ("T001-D028", "T001-D015", "T001-D068", "T001-D007", "T001-D059", "T001-D005")
 GREEN_IDS = ("T001-D005", "T001-D007", "T001-D015", "T001-D028", "T001-D039",
              "T001-D041", "T001-D046", "T001-D059", "T001-D068")
@@ -26,6 +27,10 @@ AMBER_IDS = ("T001-D009", "T001-D010", "T001-D034")
 RATING_IDS = GREEN_IDS + AMBER_IDS
 LABELS = ("fluency", "intelligibility", "prosody")
 DISCLAIMER = ["DEVELOPMENT / PRELIMINARY CALIBRATION", "NOT CEFR", "NOT B2", "NOT IELTS"]
+WAITING_FOR_HUMAN_CALIBRATION = "WAITING_FOR_HUMAN_CALIBRATION"
+WAITING_FOR_TARGET_CONFIRMATION = "WAITING_FOR_TARGET_CONFIRMATION"
+COMPLETENESS_NAME = "ASR-assisted Reading Completeness"
+LOW_CONFIDENCE_WORD_THRESHOLD = 0.60
 
 
 def now_utc() -> str:
@@ -307,11 +312,12 @@ def align_completeness(target_text: str, learner_text: str, transcript_source: s
             j += 1
     omissions = [{"word": word, "target_index": i} for i, word in enumerate(target) if i not in target_matched]
     insertions = [{"word": word, "learner_index": i} for i, word in enumerate(learner) if i not in learner_matched]
-    return {"target_words": target, "learner_words": learner, "matched_sequence": matched,
+    return {"criterion": COMPLETENESS_NAME,
+            "target_words": target, "learner_words": learner, "matched_sequence": matched,
             "omissions": omissions, "insertions": insertions,
             "coverage": len(matched) / len(target) if target else None,
             "transcript_source": transcript_source,
-            "warning": "ASR differences are not proven learner reading errors"}
+            "warning": "ASR differences are not proven learner reading errors and must not be treated as pronunciation errors"}
 
 
 def transcript_features(record: dict) -> dict:
@@ -320,6 +326,10 @@ def transcript_features(record: dict) -> dict:
     segments = transcript.get("segments", [])
     return {"mean_word_probability": mean(probabilities) if probabilities else 0.0,
             "min_word_probability": min(probabilities) if probabilities else 0.0,
+            "low_confidence_word_fraction": (
+                sum(value < LOW_CONFIDENCE_WORD_THRESHOLD for value in probabilities) / len(probabilities)
+                if probabilities else 1.0
+            ),
             "mean_segment_logprob": mean(s["avg_logprob"] for s in segments) if segments else -10.0,
             "mean_no_speech_probability": mean(s["no_speech_prob"] for s in segments) if segments else 1.0}
 
@@ -327,8 +337,156 @@ def transcript_features(record: dict) -> dict:
 FLUENCY_FEATURES = ("pause_ratio", "long_pause_count", "longest_pause_sec",
                     "mean_length_of_run_words", "speech_rate_wpm", "articulation_rate_wpm", "phonation_ratio")
 INTELLIGIBILITY_FEATURES = ("mean_word_probability", "min_word_probability",
-                            "mean_segment_logprob", "mean_no_speech_probability")
+                            "low_confidence_word_fraction", "mean_segment_logprob",
+                            "mean_no_speech_probability")
 PROSODY_FEATURES = ("f0_range_semitones", "f0_std_semitones", "intensity_std_db", "voiced_fraction")
+
+
+def _rank(values: np.ndarray) -> np.ndarray:
+    """Return deterministic average ranks, including ties, without a SciPy dependency."""
+    order = np.argsort(values, kind="mergesort")
+    ranks = np.empty(len(values), dtype=float)
+    start = 0
+    while start < len(values):
+        end = start + 1
+        while end < len(values) and values[order[end]] == values[order[start]]:
+            end += 1
+        ranks[order[start:end]] = (start + end - 1) / 2 + 1
+        start = end
+    return ranks
+
+
+def _spearman(x: np.ndarray, y: np.ndarray) -> float | None:
+    if len(x) < 3 or len(set(x.tolist())) < 2 or len(set(y.tolist())) < 2:
+        return None
+    rx, ry = _rank(x), _rank(y)
+    return float(np.corrcoef(rx, ry)[0, 1])
+
+
+def calibration_readiness(ratings: list[dict]) -> dict:
+    """Check the pre-declared gate without inspecting machine/label correlations."""
+    unexpected = sorted({row.get("pair_id") for row in ratings} - set(RATING_IDS))
+    if unexpected:
+        raise ValueError(f"Calibration contains non-development queue IDs: {unexpected}")
+    usable = [row for row in ratings
+              if row.get("human_confirmed") is True and row.get("amber_scorability") != "NOT_SCORABLE"]
+    variation = {
+        label: sorted({row.get(label) for row in usable if isinstance(row.get(label), int)})
+        for label in LABELS
+    }
+    reasons = []
+    if len(usable) < 8:
+        reasons.append(f"At least 8 SCORABLE human-rated videos are required; available={len(usable)}")
+    for label, levels in variation.items():
+        if len(levels) < 3:
+            reasons.append(f"{label} requires at least 3 distinct human rating levels; available={levels}")
+    return {
+        "status": "READY_FOR_DEVELOPMENT_CALIBRATION" if not reasons else WAITING_FOR_HUMAN_CALIBRATION,
+        "usable_human_ratings": len(usable),
+        "required_minimum": 8,
+        "label_variation": variation,
+        "reasons": reasons,
+    }
+
+
+def generate_completeness_evidence(ground_truth_dir: Path, evidence_dir: Path,
+                                   target_path: Path) -> dict:
+    """Generate transparent alignment evidence, never a learner score."""
+    target = json.loads(target_path.read_text(encoding="utf-8"))
+    if target.get("human_confirmed") is not True or not target.get("confirmed_text"):
+        return {"version": PREP_VERSION, "criterion": COMPLETENESS_NAME,
+                "status": WAITING_FOR_TARGET_CONFIRMATION, "processed_ids": []}
+    produced = []
+    for pair_id in RATING_IDS:
+        pair_dir = evidence_dir / "pairs" / pair_id
+        evidence_path = pair_dir / "evidence.json"
+        if not evidence_path.is_file():
+            raise ValueError(f"Selected-backend evidence missing: {pair_id}")
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        if evidence.get("holdout") is not False or evidence.get("scope") != "DEVELOPMENT_ONLY":
+            raise ValueError(f"Non-development evidence rejected: {pair_id}")
+        ref_path = ground_truth_dir / "asr_reference_v1" / pair_id / "reference.json"
+        reference = json.loads(ref_path.read_text(encoding="utf-8")) if ref_path.is_file() else None
+        if reference and reference.get("human_confirmed") is True:
+            learner_text = reference["human_verbatim_text"]
+            transcript_source = "HUMAN_VERBATIM"
+        else:
+            learner_text = evidence["turns"][0]["transcript"]["verbatim_transcript"]
+            transcript_source = "SELECTED_ASR_SMALL_EN"
+        result = align_completeness(target["confirmed_text"], learner_text, transcript_source)
+        result.update({
+            "version": PREP_VERSION,
+            "status": "EVIDENCE_READY_NO_SCORE",
+            "pair_id": pair_id,
+            "target_human_confirmed": True,
+            "target_version": target.get("version"),
+            "target_sha256": target.get("template_sha256"),
+            "canonical_audio_source": evidence["audio_provenance"].get("canonical_source"),
+            "is_score": False,
+        })
+        write_json(pair_dir / "reading_completeness_v1.json", result)
+        produced.append({"pair_id": pair_id, "coverage": result["coverage"],
+                         "transcript_source": transcript_source,
+                         "artifact": f"pairs/{pair_id}/reading_completeness_v1.json"})
+    summary = {"version": PREP_VERSION, "criterion": COMPLETENESS_NAME,
+               "status": "READY", "processed_ids": [item["pair_id"] for item in produced],
+               "items": produced, "holdout_processed": False, "score_created": False,
+               "warning": "Coverage is ASR-assisted evidence; differences are not proven learner errors."}
+    write_json(evidence_dir / "reading_completeness_summary_v1.json", summary)
+    return summary
+
+
+def freeze_machine_features(evidence_dir: Path, destination: Path) -> dict:
+    """Freeze pre-declared machine evidence before any teacher ratings are used."""
+    specification = {
+        "version": PREP_VERSION,
+        "frozen_before_human_calibration": True,
+        "feature_selection_used_human_labels": False,
+        "selection_basis": "pre-declared domain evidence already produced by P2.1/P2.2A",
+        "fluency": list(FLUENCY_FEATURES),
+        "intelligibility": {
+            "mapping_features": list(INTELLIGIBILITY_FEATURES),
+            "raw_word_probabilities_preserved": True,
+            "low_confidence_threshold": LOW_CONFIDENCE_WORD_THRESHOLD,
+            "recognition_stability": "NOT_AVAILABLE_SINGLE_PASS; not invented or used",
+        },
+        "prosody": {
+            "mapping_features": list(PROSODY_FEATURES),
+            "descriptive_features": ["f0_median_hz", "f0_p10_hz", "f0_p90_hz",
+                                     "intensity_median_db", "pitch_floor_hz", "pitch_ceiling_hz"],
+            "backend": "Parselmouth evidence already generated in P2.1",
+        },
+        "canonical_audio_source_required": "RAW_COMPLETED_DUET",
+    }
+    rows = []
+    for pair_id in RATING_IDS:
+        evidence_path = evidence_dir / "pairs" / pair_id / "evidence.json"
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        if evidence.get("holdout") is not False or evidence.get("scope") != "DEVELOPMENT_ONLY":
+            raise ValueError(f"Holdout/non-development evidence rejected: {pair_id}")
+        if evidence["audio_provenance"].get("canonical_source") != "RAW_COMPLETED_DUET":
+            raise ValueError(f"Raw completed Duet is not the canonical source: {pair_id}")
+        fluency = evidence["aggregate_fluency_evidence"]
+        transcript = evidence["turns"][0]["transcript"]
+        acoustic = evidence["turns"][0]["acoustic"]
+        probabilities = [word["probability"] for word in transcript.get("words", [])
+                         if word.get("probability") is not None]
+        intelligibility = transcript_features({"original_asr": transcript})
+        rows.append({
+            "pair_id": pair_id,
+            "source_evidence_sha256": sha256_file(evidence_path),
+            "fluency": {name: fluency[name] for name in FLUENCY_FEATURES},
+            "intelligibility": {**intelligibility, "word_probabilities": probabilities,
+                                  "recognition_stability": None,
+                                  "recognition_stability_status": "NOT_AVAILABLE_SINGLE_PASS"},
+            "prosody": {name: acoustic.get(name) for name in
+                         list(PROSODY_FEATURES) + specification["prosody"]["descriptive_features"]},
+        })
+    payload = {"version": PREP_VERSION, "status": "FROZEN_PRE_HUMAN_CALIBRATION",
+               "created_at_utc": now_utc(), "specification": specification,
+               "items": rows, "rating_count_read": 0, "holdout_processed": False}
+    write_json(destination, payload)
+    return payload
 
 
 def fit_ridge_mapping(rows: list[dict], label: str, feature_names: tuple[str, ...], alpha: float = 2.0) -> dict:
@@ -353,11 +511,22 @@ def fit_ridge_mapping(rows: list[dict], label: str, feature_names: tuple[str, ..
         prediction, _, _, _ = fit_predict(x[keep], y[keep], x[i])
         loo.append(prediction)
     _, mu, sd, beta = fit_predict(x, y, x[0])
+    absolute_errors = np.abs(np.asarray(loo) - y)
+    predicted_vs_human = [
+        {"pair_id": row.get("pair_id", f"row_{index + 1:03d}"),
+         "human": int(y[index]), "predicted_loo": round(loo[index], 4),
+         "absolute_error": round(float(absolute_errors[index]), 4)}
+        for index, row in enumerate(rows)
+    ]
     return {"status": "DEVELOPMENT_PRELIMINARY", "model": "ridge_linear_clipped_1_5",
             "alpha": alpha, "features": list(feature_names), "feature_mean": mu.tolist(),
             "feature_scale": sd.tolist(), "intercept": float(beta[0]), "coefficients": beta[1:].tolist(),
             "n": len(rows), "label_distribution": {str(k): int(sum(y == k)) for k in range(1, 6)},
-            "loo_mae": float(np.mean(np.abs(np.asarray(loo) - y))),
+            "validation": "LEAVE_ONE_OUT",
+            "loo_mae": float(np.mean(absolute_errors)),
+            "within_one_band_agreement": float(np.mean(absolute_errors <= 1.0)),
+            "spearman_correlation": _spearman(np.asarray(loo), y),
+            "predicted_vs_human": predicted_vs_human,
             "loo_predictions": [round(v, 4) for v in loo], "uncertainty": "very small development sample"}
 
 
@@ -374,7 +543,14 @@ def calibrate(ground_truth_dir: Path, evidence_dir: Path, target_path: Path,
     target = json.loads(target_path.read_text(encoding="utf-8"))
     if target.get("human_confirmed") is not True:
         raise ValueError("Human-confirmed target text is required")
-    ratings = json.loads((ground_truth_dir / "ratings_v1.json").read_text(encoding="utf-8"))["items"]
+    ratings_payload = json.loads((ground_truth_dir / "ratings_v1.json").read_text(encoding="utf-8"))
+    if ratings_payload.get("holdout_used") is not False:
+        raise ValueError("Calibration rating artifact must explicitly exclude holdout")
+    ratings = ratings_payload["items"]
+    readiness = calibration_readiness(ratings)
+    if readiness["status"] != "READY_FOR_DEVELOPMENT_CALIBRATION":
+        return {"version": PREP_VERSION, **readiness, "scores": [],
+                "holdout_processed": False, "labels": DISCLAIMER}
     usable = [r for r in ratings if r["human_confirmed"] and r["amber_scorability"] != "NOT_SCORABLE"]
     rows = []
     completeness = []
@@ -384,6 +560,10 @@ def calibrate(ground_truth_dir: Path, evidence_dir: Path, target_path: Path,
         if not evidence_path.is_file():
             continue
         evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        if pair_id not in RATING_IDS or evidence.get("holdout") is not False or evidence.get("scope") != "DEVELOPMENT_ONLY":
+            raise ValueError(f"Holdout/non-development calibration evidence rejected: {pair_id}")
+        if evidence["audio_provenance"].get("canonical_source") != "RAW_COMPLETED_DUET":
+            raise ValueError(f"Calibration source is not the raw completed Duet: {pair_id}")
         fluency = evidence["aggregate_fluency_evidence"]
         acoustic = evidence["turns"][0]["acoustic"]
         ref_path = ground_truth_dir / "asr_reference_v1" / pair_id / "reference.json"
@@ -392,7 +572,10 @@ def calibrate(ground_truth_dir: Path, evidence_dir: Path, target_path: Path,
             learner_text, source = record["human_verbatim_text"], "HUMAN_VERBATIM"
         else:
             learner_text, source = evidence["turns"][0]["transcript"]["verbatim_transcript"], "SELECTED_ASR_PENDING_VALIDATION"
-        complete = align_completeness(target["confirmed_text"], learner_text, source)
+        prepared_path = output_dir / "pairs" / pair_id / "reading_completeness_v1.json"
+        complete = (json.loads(prepared_path.read_text(encoding="utf-8"))
+                    if prepared_path.is_file()
+                    else align_completeness(target["confirmed_text"], learner_text, source))
         complete["criterion_score_1_5"] = round(1 + 4 * complete["coverage"], 2) if complete["coverage"] is not None else None
         complete["score_mapping"] = "linear endpoints: 0 coverage=1, 1 coverage=5; no proficiency threshold"
         write_json(output_dir / "pairs" / pair_id / "completeness.json", complete)
@@ -429,7 +612,8 @@ def calibrate(ground_truth_dir: Path, evidence_dir: Path, target_path: Path,
                 "overall_formula": "unweighted mean of three validated/preliminary criterion mappings" if overall_ready else None,
                 "overall_status": "DEVELOPMENT_PRELIMINARY" if overall_ready else "UNAVAILABLE_INSUFFICIENT_MAPPING"}
         scores.append(item)
-    result = {"version": VERSION, "scope": "DEVELOPMENT_ONLY", "n_human_rated": len(rows),
+    result = {"version": VERSION, "status": "DEVELOPMENT_PRELIMINARY_CALIBRATION_READY",
+              "scope": "DEVELOPMENT_ONLY", "n_human_rated": len(rows),
               "mappings": mappings, "completeness_evidence": completeness,
               "scores": scores, "holdout_processed": False, "labels": DISCLAIMER,
               "overall_note": "Overall is emitted only when Fluency, Intelligibility, and Completeness mappings are all available; Prosody remains separate"}
