@@ -1,0 +1,54 @@
+# Python/build/cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.vendor/
+.local/
+.venv/
+venv/
+env/
+
+# Secrets and local settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Private research media and human data
+data/
+runs/
+assessment_runs/
+cohort_runs/
+human_ground_truth/
+calibration/
+task_profiles/
+output/
+screenshots/
+
+# Large/generated media and model artifacts
+*.wav
+*.mp3
+*.m4a
+*.mp4
+*.mov
+*.mkv
+*.npz
+*.npy
+models/
+model_cache/
+
+# Local logs and transient execution output
+*.log
+*.out
+*.err
+.c2c_*
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

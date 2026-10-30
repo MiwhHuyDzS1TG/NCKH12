@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Duet segmenter Phase 1 calibration result",
+  "type": "object",
+  "required": ["status", "input_metadata", "learner_segments", "overlap_candidates", "warnings", "artifacts"],
+  "properties": {
+    "status": {"enum": ["ok", "alignment_unreliable", "template_alignment_unreliable", "cancellation_unreliable"]},
+    "input_metadata": {"type": "object"},
+    "alignment_diagnostics": {"type": "object", "required": ["coarse_offset_sec", "peak_score", "peak_to_background_score", "a", "b", "anchors"]},
+    "cancellation_diagnostics": {"type": ["object", "null"]},
+    "vad_configuration": {"type": "object"},
+    "learner_segments": {"type": "array", "items": {"$ref": "#/$defs/learner_segment"}},
+    "overlap_candidates": {"type": "array", "items": {"$ref": "#/$defs/interval"}},
+    "original_vad_segments": {"type": "array", "items": {"$ref": "#/$defs/interval"}},
+    "residual_vad_segments": {"type": "array", "items": {"$ref": "#/$defs/interval"}},
+    "leakage_diagnostics": {"type": "array", "items": {"type": "object"}},
+    "reference_leakage_candidates": {"type": "array", "items": {"$ref": "#/$defs/interval"}},
+    "backend_comparison": {"type": ["object", "null"]},
+    "alignment_mode": {"enum": ["VISUAL", "AUDIO", "HYBRID", "UNRELIABLE"]},
+    "visual_alignment": {"type": "object"},
+    "audio_state": {"enum": ["CLEAN_MUTED", "REFERENCE_PRESENT", "REFERENCE_PRESENCE_UNCERTAIN"]},
+    "reference_audio_presence_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "reference_audio_presence_features": {"type": "object"},
+    "reference_contamination_scope": {"enum": ["NONE", "INTRO_OR_NONSCORING_ONLY", "SCORING_REGION", "UNKNOWN"]},
+    "audio_quality_features": {"type": "object"},
+    "background_interference": {"type": "boolean"},
+    "selected_audio_path": {"enum": ["RAW_DUET", "CANCELLATION_RESIDUAL_DETECTION", "NONE"]},
+    "selected_cancellation_backend": {"enum": ["NONE", "LINEAR", "AEC3", "UNSCORABLE"]},
+    "scorability_status": {"enum": ["SCORABLE_CLEAN", "SCORABLE_AFTER_CANCELLATION", "UNSCORABLE_REFERENCE_OVERLAP", "UNSCORABLE_ALIGNMENT", "REVIEW_REQUIRED"]},
+    "scorability_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "scorability_reasons": {"type": "array", "items": {"type": "string"}},
+    "quality_gate": {"enum": ["GREEN", "AMBER", "RED"]},
+    "quality_gate_reasons": {"type": "array", "items": {"type": "string"}},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "artifacts": {"type": "object"}
+  },
+  "$defs": {
+    "interval": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {"start": {"type": "number", "minimum": 0}, "end": {"type": "number", "exclusiveMinimum": 0}}
+    },
+    "learner_segment": {
+      "allOf": [{"$ref": "#/$defs/interval"}, {
+        "type": "object", "required": ["confidence", "overlap_candidate"],
+        "properties": {"confidence": {"type": "number", "minimum": 0, "maximum": 1}, "overlap_candidate": {"type": "boolean"}}
+      }]
+    }
+  }
+}

@@ -1,0 +1,97 @@
+# Experimental defaults; tune with labeled Duet pairs before research conclusions.
+alignment:
+  coarse_max_offset_sec: 15.0
+  coarse_hop_sec: 0.02
+  coarse_min_overlap_fraction: 0.45
+  anchor_count: 8
+  anchor_duration_sec: 0.8
+  fine_search_ms: 50
+  min_anchor_correlation: 0.55
+  min_reliable_anchors: 3
+  max_offset_mad_ms: 12
+  max_offset_range_ms: 45
+  max_time_scale_deviation: 0.005
+  min_coarse_peak_to_background: 1.25
+cancellation:
+  backend: auto
+  analysis_window_sec: 0.5
+  min_reference_rms: 0.002
+  min_window_correlation: 0.75
+  confidence_window_quantile: 0.5
+  min_confident_windows: 3
+  min_reference_suppression_db: 5.0
+  webrtc_stream_delay_ms: 0
+vad:
+  threshold: 0.5
+  min_speech_duration_ms: 250
+  min_silence_duration_ms: 100
+  speech_pad_ms: 30
+segments:
+  min_duration_sec: 0.15
+  merge_gap_sec: 0.12
+  template_end_padding_sec: 0.12
+  overlap_min_duration_sec: 0.03
+leakage:
+  enabled: true
+  min_waveform_correlation: 0.50
+  min_spectral_similarity: 0.60
+  max_local_suppression_db: 0.0
+  min_template_overlap_ratio: 0.30
+visual:
+  sample_fps: 4.0
+  anchor_count: 12
+  search_sec: 4.0
+  min_anchor_score: 0.65
+  min_match_score: 0.80
+  min_accepted_anchors: 6
+  min_anchor_coverage: 0.70
+  max_anchor_mad_sec: 0.35
+  max_time_scale_deviation: 0.01
+  hybrid_max_offset_disagreement_sec: 0.30
+audio_presence:
+  window_sec: 1.0
+  min_reference_vad_fraction: 0.30
+  gcc_max_delay_ms: 80
+  duet_active_rms: 0.002
+  strong_correlation: 0.35
+  strong_coherence: 0.25
+  strong_spectral_similarity: 0.55
+  strong_explained_energy: 0.12
+  clean_muted_max_score: 0.25
+  reference_present_min_score: 0.50
+  strong_window_min_features: 2
+  clean_max_reference_like_fraction: 0.0
+  clean_max_p95_score: 0.30
+  clean_max_spectral_p95: 0.58
+  clean_max_spectral_max: 0.60
+  local_present_min_score: 0.45
+  local_present_min_fraction: 0.08
+  local_present_min_consecutive_windows: 2
+  local_spectral_similarity: 0.70
+  local_spectral_p90_present: 0.70
+  local_spectral_fraction_present: 0.25
+scorability:
+  min_suppression_db: 5.0
+  green_min_suppression_db: 8.0
+  max_residual_similarity: 0.35
+  min_learner_fraction: 0.02
+  max_learner_fraction: 0.90
+audio_quality:
+  background_rms_p90_min: 0.045
+  speech_to_background_db_max: 8.0
+  background_tonality_p90_min: 0.45
+  low_speech_rms_median_max: 0.012
+  low_speech_rms_p90_max: 0.020
+  low_speech_to_background_db_max: 16.0
+cohort:
+  calibration_sample_count: 8
+  green_audit_fraction: 0.10
+  green_audit_minimum: 5
+  green_audit_failure_tolerance: 0.05
+  holdout_fraction: 0.25
+  holdout_target_count_v2: 18
+  green_audit_v2_count: 8
+  seed: 20260916
+evaluation:
+  frame_sec: 0.02
+  boundary_match_tolerance_sec: 1.0
