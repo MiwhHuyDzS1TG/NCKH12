@@ -878,12 +878,12 @@ def _p22a_dashboard() -> None:
                         generate_selected_evidence(ground, evidence, ROOT / "p2_config.yaml", calibration)
                     st.rerun()
     with ratings_tab:
-        ratings_path = ground / "ratings_v1.json"
+        ratings_path = ground / "ratings_v2.json" if (ground / "ratings_v2.json").is_file() else ground / "ratings_v1.json"
         payload = json.loads(ratings_path.read_text(encoding="utf-8"))
         completed = [x for x in payload["items"] if x["human_confirmed"]]
         st.progress(len(completed) / len(payload["items"]), text=f"Đã xử lý {len(completed)}/12 video")
-        st.markdown("**Thang dùng chung:** 1 = vấn đề nghiêm trọng; 3 = đạt mức trung bình, vẫn còn điểm cản trở; 5 = rất rõ và ổn định.")
-        st.markdown("- **Fluency:** độ liền mạch, nhịp đọc và khoảng dừng.\n- **Intelligibility:** mức dễ nghe hiểu.\n- **Prosody:** trọng âm, nhịp và ngữ điệu.\n\nKhông chấm ngữ pháp hoặc từ vựng.")
+        st.markdown("**Thang dùng chung:** 1 = vấn đề nghiêm trọng; 3 = trung bình; 5 = rất rõ và ổn định.")
+        st.markdown("- **Fluency:** độ liền mạch, ngập ngừng, lặp/sửa và dòng chảy; không chấm phát âm.\n- **Pronunciation:** độ chính xác/rõ của từ và âm; không trừ điểm chỉ vì giọng Việt.\n- **Intelligibility:** mức dễ hiểu khi không nhìn transcript.\n- **Prosody:** nhịp, chia cụm, trọng âm và ngữ điệu; không lặp lại Fluency.\n\nKhông chấm ngữ pháp hoặc từ vựng.")
         pair_id = st.selectbox("Video cần chấm", [x["pair_id"] for x in payload["items"]], key="p22_rating_pair")
         item = next(x for x in payload["items"] if x["pair_id"] == pair_id)
         raw = json.loads((evidence / "pairs" / pair_id / "raw_evidence.json").read_text(encoding="utf-8"))
@@ -899,17 +899,23 @@ def _p22a_dashboard() -> None:
             scorability = "SCORABLE"
         scores = {}
         if scorability != "NOT_SCORABLE":
-            for name, label in (("fluency", "Fluency"), ("intelligibility", "Intelligibility"), ("prosody", "Prosody")):
+            for name, label in (("fluency", "Fluency"), ("pronunciation", "Pronunciation"),
+                                ("intelligibility", "Intelligibility"), ("prosody", "Prosody")):
                 scores[name] = st.slider(label, 1, 5, int(item[name] or 3), key=f"p22_{name}_{pair_id}")
+        pronunciation_examples = st.text_input("Pronunciation examples / problematic words (không bắt buộc)",
+                                               value=item.get("pronunciation_examples", ""),
+                                               key=f"p22_pronunciation_examples_{pair_id}")
         note = st.text_input("Ghi chú ngắn (không bắt buộc)", value=item["note"], key=f"p22_note_{pair_id}")
         rating_check = st.checkbox("Tôi đã nghe/xem và xác nhận lựa chọn này", key=f"p22_rating_check_{pair_id}")
         blocked = not rating_check or (item["quality_gate"] == "AMBER" and scorability == "PENDING")
         if st.button("Lưu đánh giá", disabled=blocked, key=f"p22_rating_save_{pair_id}"):
-            save_rating(ratings_path, pair_id, scorability, scores, note, rating_check)
+            save_rating(ratings_path, pair_id, scorability, scores, note, rating_check,
+                        pronunciation_examples=pronunciation_examples)
             st.rerun()
     with result_tab:
         target = json.loads(target_path.read_text(encoding="utf-8"))
-        ratings = json.loads((ground / "ratings_v1.json").read_text(encoding="utf-8"))["items"]
+        ratings_path = ground / "ratings_v2.json" if (ground / "ratings_v2.json").is_file() else ground / "ratings_v1.json"
+        ratings = json.loads(ratings_path.read_text(encoding="utf-8"))["items"]
         usable = [x for x in ratings if x["human_confirmed"] and x["amber_scorability"] != "NOT_SCORABLE"]
         readiness = calibration_readiness(ratings)
         evidence_ready = (evidence / "selected_backend_evidence_summary.json").is_file()
@@ -936,7 +942,7 @@ def _teacher_rating_dashboard() -> None:
 
     ground = ROOT / "human_ground_truth" / "p22a_v1"
     evidence = ROOT / "assessment_runs" / "T001_p22_calibrated_v01"
-    ratings_path = ground / "ratings_v1.json"
+    ratings_path = ground / "ratings_v2.json" if (ground / "ratings_v2.json").is_file() else ground / "ratings_v1.json"
     st.title("Teacher Rating — P2.2A")
     if not ratings_path.is_file():
         st.error("Chưa có hàng chờ 12 video.")
@@ -946,6 +952,24 @@ def _teacher_rating_dashboard() -> None:
     completed = [item for item in items if item.get("human_confirmed")]
     st.progress(len(completed) / len(items), text=f"Tiến độ: {len(completed)} / {len(items)}")
     st.caption("Chấm phần học sinh nói. 1 = rất yếu, 3 = trung bình, 5 = rất tốt. Không chấm ngữ pháp hay từ vựng.")
+    with st.expander("Hướng dẫn 4 tiêu chí", expanded=True):
+        st.markdown("""
+**Fluency — How smoothly and continuously does the learner speak?**
+
+Nghe khoảng dừng, ngập ngừng, lặp/sửa và độ liền mạch. Không chấm phát âm ở đây.
+
+**Pronunciation — How accurately and clearly are the English words and sounds produced?**
+
+Nghe phụ âm/nguyên âm, âm cuối, âm bị bỏ/sai, cách đọc từ và word stress rõ ràng. Không trừ điểm chỉ vì giọng Việt. 1 = nhiều từ khó nhận ra; 3 = nhìn chung hiểu nhưng lỗi lặp lại; 5 = rõ và chính xác nhất quán.
+
+**Intelligibility — How easy is the learner to understand without looking at the transcript?**
+
+1 = rất khó hiểu; 3 = phần lớn hiểu được; 5 = rất rõ và hiểu dễ dàng. Không tự động trừ điểm vì accent.
+
+**Prosody — How appropriate are the rhythm, phrasing, stress and intonation?**
+
+Nghe nhịp câu, chia cụm ý, sentence stress và ngữ điệu. Không chấm trùng Fluency.
+""")
 
     pair_ids = [item["pair_id"] for item in items]
     first_pending = next((index for index, item in enumerate(items) if not item.get("human_confirmed")), 0)
@@ -974,6 +998,7 @@ def _teacher_rating_dashboard() -> None:
     scores: dict[str, int] = {}
     if scorability != "NOT_SCORABLE":
         for name, label in (("fluency", "Fluency 1–5"),
+                            ("pronunciation", "Pronunciation 1–5"),
                             ("intelligibility", "Intelligibility 1–5"),
                             ("prosody", "Prosody 1–5")):
             options = [None, 1, 2, 3, 4, 5]
@@ -984,12 +1009,16 @@ def _teacher_rating_dashboard() -> None:
                                  key=f"teacher_{name}_{selected_id}")
             if isinstance(value, int):
                 scores[name] = value
+    pronunciation_examples = st.text_input("Pronunciation examples / problematic words (không bắt buộc)",
+                                           value=item.get("pronunciation_examples", ""),
+                                           key=f"teacher_pronunciation_examples_{selected_id}")
     note = st.text_input("Ghi chú ngắn (không bắt buộc)", value=item.get("note", ""),
                          key=f"teacher_note_{selected_id}")
-    scores_ready = scorability == "NOT_SCORABLE" or all(name in scores for name in ("fluency", "intelligibility", "prosody"))
+    scores_ready = scorability == "NOT_SCORABLE" or all(name in scores for name in ("fluency", "pronunciation", "intelligibility", "prosody"))
     save_disabled = scorability is None or not scores_ready
     if st.button("Save & Next", type="primary", disabled=save_disabled, key=f"teacher_save_{selected_id}"):
-        save_rating(ratings_path, selected_id, scorability, scores, note, True)
+        save_rating(ratings_path, selected_id, scorability, scores, note, True,
+                    pronunciation_examples=pronunciation_examples)
         refreshed = json.loads(ratings_path.read_text(encoding="utf-8"))["items"]
         next_pending = next((i for i, row in enumerate(refreshed) if not row.get("human_confirmed")),
                             min(index + 1, len(items) - 1))
@@ -1005,7 +1034,8 @@ def _phase2_assessment_result_dashboard() -> None:
     from speaking_evidence.p22 import DISCLAIMER, RATING_IDS
 
     evidence_root = ROOT / "assessment_runs" / "T001_p22_calibrated_v01"
-    ratings_path = ROOT / "human_ground_truth" / "p22a_v1" / "ratings_v1.json"
+    rating_root = ROOT / "human_ground_truth" / "p22a_v1"
+    ratings_path = rating_root / "ratings_v2.json" if (rating_root / "ratings_v2.json").is_file() else rating_root / "ratings_v1.json"
     st.title("Phase 2 Assessment Result")
     st.warning(" · ".join(DISCLAIMER))
     pair_id = st.selectbox("Learner", list(RATING_IDS), key="p22_result_pair")
@@ -1025,6 +1055,20 @@ def _phase2_assessment_result_dashboard() -> None:
     st.json({"mean_word_probability": sum(probabilities) / len(probabilities) if probabilities else None,
              "word_count_with_probability": len(probabilities),
              "note": "Recognition evidence only; an ASR mismatch is not a pronunciation error."})
+    st.subheader("Pronunciation")
+    pronunciation_path = evidence_root / "pairs" / pair_id / "pronunciation_asr_baseline_v1.json"
+    if pronunciation_path.is_file():
+        pronunciation = json.loads(pronunciation_path.read_text(encoding="utf-8"))
+        st.info("PRONUNCIATION EVIDENCE ONLY · WAITING FOR HUMAN CALIBRATION")
+        st.json({"status": pronunciation["status"],
+                 "backend_role": pronunciation["backend"]["role"],
+                 "valid_analyzed_word_count": pronunciation["utterance"]["valid_analyzed_word_count"],
+                 "analyzed_coverage": pronunciation["utterance"]["analyzed_coverage"],
+                 "final_consonant_evidence": pronunciation["diagnostics"]["final_consonant_evidence"],
+                 "human_calibrated_score": None,
+                 "limitations": pronunciation["limitations"]})
+    else:
+        st.error("WAITING FOR HUMAN CALIBRATION")
     st.subheader("ASR-assisted Reading Completeness")
     completeness_path = evidence_root / "pairs" / pair_id / "reading_completeness_v1.json"
     if completeness_path.is_file():

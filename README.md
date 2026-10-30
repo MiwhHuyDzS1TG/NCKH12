@@ -212,6 +212,20 @@ Candidate target provenance is in `task_profiles/T001_target_text_v1.json`; huma
 
 For tonight's focused teacher workflow, double-click `START_TEACHER_RATING.bat` or open `http://127.0.0.1:8501/?mode=teacher`. The dedicated page hides all machine scores, saves each rating immediately, and advances with **Save & Next**. The separate evidence/result page is `http://127.0.0.1:8501/?mode=p22result`; it displays **WAITING FOR HUMAN CALIBRATION** and no numeric score until the minimum label-count and label-variation gates pass.
 
+## P2.3 pronunciation track preparation
+
+The teacher workflow now records four separate integer criteria: **Fluency**, **Pronunciation**, **Intelligibility**, and **Prosody**. Pronunciation examples/problematic words are optional. The old `ratings_v1.json` remains untouched; `ratings_v2.json` records the new schema and initializes Pronunciation to `null`, never to a fabricated value. The teacher page shows no ASR confidence, WPM, OpenPronounce/GOPT output, or machine score before rating.
+
+The frozen pre-label benchmark plan is `speaking_evidence/specs/pronunciation_benchmark_plan_v1.json`, and the machine-evidence contract is `speaking_evidence/schemas/pronunciation_evidence_v1.schema.json`. Reproduce local pre-rating artifacts with:
+
+```powershell
+python scripts/p23_prepare.py
+```
+
+Pronunciation input must be the raw completed Duet cropped/masked by Phase-1 learner timestamps. Residual/cancelled audio is rejected. Deterministic target/ASR alignment sends only `MATCHED` words to pronunciation analysis; `OMITTED` words remain Reading Completeness evidence and are not penalized twice. `SUBSTITUTED_OR_UNCERTAIN` remains uncertain rather than becoming an automatic phoneme error.
+
+Baseline A uses existing faster-whisper recognition confidence only as an intelligibility/recognition comparison, not as a true pronunciation model. Candidate B is pinned as optional `openpronounce==0.3.0` (PyPI release commit `8b1e8a3e49eae92756cf7c8335f00f3917f431b8`). It requires FFmpeg, eSpeak NG, and two Wav2Vec2 checkpoints of roughly 1.2 GB each. The core app does not import or require it. On the current Windows machine, the package installed but the SHA-256-verified extracted eSpeak NG 1.52.0 executable failed its runtime probe with Windows exit `3221225477` (`0xC0000005`, access violation), so no OpenPronounce model weights were downloaded and no raw score was accepted. Alignment replacement and GOPT remain unselected for the competition MVP.
+
 ### AI-assisted development review
 
 The separate machine-reviewed T001 profile is `task_profiles/T001_v2_ai.json`: one controlled-reading turn at 3.75–52.5 s, with `model_reviewed=true` and `human_confirmed=false`. The completed five-video run is in `assessment_runs/T001_p21b_ai_v2/`. Its D028/D068/D059 small.en versus medium.en comparison reports **pairwise word disagreement only**, not human-reference WER or model accuracy; see `CODEX_P21B_AI_LOG.md` for results and limitations. The older human-confirmation workflow remains available. The CLI adds `review-ai`, `run-ai`, and `compare-ai` commands with explicit `--profile` and `--output-dir` arguments. `review-ai` verifies the fixed nine-GREEN development manifest, template hash, and reference VAD before saving. Its media observations describe the T001 review performed for v2; a future template or cohort change requires a fresh visual review. No holdout or speaking score is involved.

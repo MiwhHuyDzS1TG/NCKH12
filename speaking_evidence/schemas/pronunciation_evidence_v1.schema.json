@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nckh12.local/schemas/pronunciation_evidence_v1.schema.json",
+  "title": "NCKH12 P2.3 Pronunciation Machine Evidence",
+  "type": "object",
+  "required": [
+    "version",
+    "pair_id",
+    "status",
+    "backend",
+    "audio_provenance",
+    "utterance",
+    "word_evidence",
+    "phone_evidence",
+    "human_calibrated_score",
+    "limitations"
+  ],
+  "properties": {
+    "version": {"const": "P2.3-pronunciation-evidence-v1"},
+    "pair_id": {"pattern": "^T001-D[0-9]{3}$"},
+    "status": {"enum": ["PRONUNCIATION_EVIDENCE_ONLY", "BACKEND_READY", "BACKEND_FAILED"]},
+    "backend": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"},
+        "model": {"type": ["string", "null"]},
+        "role": {"type": "string"}
+      }
+    },
+    "audio_provenance": {
+      "type": "object",
+      "required": ["canonical_source", "phase1_timestamps_used", "model_input_ref", "holdout"],
+      "properties": {
+        "canonical_source": {"const": "RAW_COMPLETED_DUET"},
+        "phase1_timestamps_used": {"const": true},
+        "model_input_ref": {"type": "string", "not": {"pattern": "(?i)(residual|cancel)"}},
+        "model_input_sha256": {"type": "string"},
+        "holdout": {"const": false}
+      }
+    },
+    "utterance": {
+      "type": "object",
+      "required": ["backend_raw_score", "mean_pronunciation_evidence", "low_score_word_ratio",
+                   "low_score_phone_ratio", "confidence", "valid_analyzed_word_count",
+                   "analyzed_coverage", "runtime_sec"]
+    },
+    "word_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["target_word", "start_sec", "end_sec", "expected_pronunciation",
+                     "machine_score_or_evidence", "confidence", "status",
+                     "eligible_for_pronunciation", "pronunciation_error_confirmed"],
+        "properties": {
+          "status": {"enum": ["MATCHED", "OMITTED", "SUBSTITUTED_OR_UNCERTAIN"]},
+          "pronunciation_error_confirmed": {"const": false}
+        }
+      }
+    },
+    "phone_evidence": {"type": "array"},
+    "human_calibrated_score": {"type": "null"},
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  }
+}

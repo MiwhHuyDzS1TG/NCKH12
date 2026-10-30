@@ -83,16 +83,19 @@ def test_rating_save_does_not_modify_raw_evidence(tmp_path):
     digest = hashlib.sha256(raw.read_bytes()).hexdigest()
     with pytest.raises(ValueError):
         save_rating(rating_path, "T001-D009", "PENDING", {"fluency": 3,
-                    "intelligibility": 3, "prosody": 3}, "", True)
+                    "pronunciation": 3, "intelligibility": 3, "prosody": 3}, "", True)
     saved = save_rating(rating_path, "T001-D009", "SCORABLE", {"fluency": 2,
-                        "intelligibility": 3, "prosody": 4}, "learner repeated a line", True)
-    assert (saved["fluency"], saved["intelligibility"], saved["prosody"]) == (2, 3, 4)
+                        "pronunciation": 4, "intelligibility": 3, "prosody": 4},
+                        "learner repeated a line", True, pronunciation_examples="worked")
+    assert (saved["fluency"], saved["pronunciation"], saved["intelligibility"],
+            saved["prosody"]) == (2, 4, 3, 4)
+    assert saved["pronunciation_examples"] == "worked"
     assert saved["note"] == "learner repeated a line"
     restarted_payload = json.loads(rating_path.read_text(encoding="utf-8"))
     restarted_item = restarted_payload["items"][0]
     assert restarted_item["human_confirmed"] is True
-    assert (restarted_item["fluency"], restarted_item["intelligibility"],
-            restarted_item["prosody"]) == (2, 3, 4)
+    assert (restarted_item["fluency"], restarted_item["pronunciation"],
+            restarted_item["intelligibility"], restarted_item["prosody"]) == (2, 4, 3, 4)
     assert hashlib.sha256(raw.read_bytes()).hexdigest() == digest
 
 
@@ -141,7 +144,7 @@ def test_calibration_waits_without_human_labels_and_writes_no_scores(tmp_path):
     ground = tmp_path / "ground"
     ground.mkdir()
     ratings = [{"pair_id": pair_id, "quality_gate": "GREEN", "amber_scorability": "NOT_REQUIRED",
-                "fluency": None, "intelligibility": None, "prosody": None,
+                "fluency": None, "pronunciation": None, "intelligibility": None, "prosody": None,
                 "human_confirmed": False} for pair_id in RATING_IDS]
     (ground / "ratings_v1.json").write_text(json.dumps({"holdout_used": False, "items": ratings}),
                                              encoding="utf-8")
@@ -157,7 +160,8 @@ def test_calibration_waits_without_human_labels_and_writes_no_scores(tmp_path):
 
 def test_calibration_gate_rejects_non_queue_id_and_requires_variation():
     rows = [{"pair_id": pair_id, "human_confirmed": True, "amber_scorability": "NOT_REQUIRED",
-             "fluency": 3, "intelligibility": 3, "prosody": 3} for pair_id in RATING_IDS[:8]]
+             "fluency": 3, "pronunciation": 3, "intelligibility": 3, "prosody": 3}
+            for pair_id in RATING_IDS[:8]]
     waiting = calibration_readiness(rows)
     assert waiting["status"] == WAITING_FOR_HUMAN_CALIBRATION
     assert any("distinct" in reason for reason in waiting["reasons"])
@@ -207,4 +211,7 @@ def test_teacher_rating_page_is_focused_and_machine_score_blind():
     rendered = " ".join(str(element.value) for group in
                         (app.title, app.caption, app.markdown, app.info, app.warning, app.error)
                         for element in group)
-    assert "machine score" not in rendered.lower()
+    assert all(term not in rendered.lower() for term in
+               ("machine score", "asr confidence", "openpronounce", "wpm", "pause statistics", "gopt"))
+    labels = {selectbox.label for selectbox in app.selectbox}
+    assert {"Fluency 1–5", "Pronunciation 1–5", "Intelligibility 1–5", "Prosody 1–5"} <= labels

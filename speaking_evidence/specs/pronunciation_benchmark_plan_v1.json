@@ -1,0 +1,71 @@
+{
+  "version": "pronunciation-benchmark-plan-v1",
+  "frozen_before_human_pronunciation_labels": true,
+  "frozen_at_utc": "2026-10-30T00:00:00+07:00",
+  "scope": "T001_DEVELOPMENT_ONLY",
+  "rating_queue_size": 12,
+  "holdout_allowed": false,
+  "canonical_audio_invariant": {
+    "source": "RAW_COMPLETED_DUET",
+    "crop_rule": "Phase-1 learner timestamps",
+    "forbidden": ["residual_detection.wav", "cancelled audio", "reference-cancellation output"],
+    "reason": "Reference cancellation can distort spectral and phonetic evidence."
+  },
+  "target_alignment_policy": {
+    "algorithm": "deterministic target-vs-selected-ASR word edit alignment",
+    "MATCHED": "eligible for pronunciation analysis",
+    "OMITTED": "Completeness only; never forced into phone alignment or penalized again",
+    "INSERTED": "stored separately; excluded from target pronunciation accuracy",
+    "SUBSTITUTED_OR_UNCERTAIN": "low-confidence/uncertain; no exact phoneme claim without dedicated evidence"
+  },
+  "candidates": [
+    {
+      "id": "BASELINE_A_ASR_RECOGNITION_PROXY",
+      "role": "intelligibility/recognition baseline, not a true pronunciation model",
+      "backend": "faster-whisper small.en",
+      "features": ["mean_word_probability", "low_confidence_word_fraction", "target_asr_match_coverage", "recognition_stability_if_available"],
+      "prohibited_claim": "ASR mismatch is a confirmed pronunciation error"
+    },
+    {
+      "id": "CANDIDATE_B_OPENPRONOUNCE",
+      "role": "first dedicated local pronunciation candidate",
+      "package": "openpronounce==0.3.0",
+      "pypi_release_commit": "8b1e8a3e49eae92756cf7c8335f00f3917f431b8",
+      "license": "MIT",
+      "models": ["facebook/wav2vec2-large-960h", "facebook/wav2vec2-lv-60-espeak-cv-ft"],
+      "system_dependencies": ["ffmpeg", "espeak-ng 1.52.0"],
+      "execution": "local CPU, optional dependency",
+      "outputs_requested": ["raw score", "expected/heard phones", "word evidence", "phone confidence", "runtime", "backend/model version"],
+      "selection_rule": "validate against teacher Pronunciation labels; raw 0-100 score is not ground truth"
+    },
+    {
+      "id": "CANDIDATE_C_ALIGNMENT",
+      "selected_for_this_sprint": false,
+      "decision": "Existing selected-ASR word timing is sufficient to gate matched words for the first benchmark.",
+      "reconsider_if": "Dedicated backend fails because materially better word/phone boundaries are required.",
+      "preferred_future_option": "WhisperX alignment only; do not replace validated small.en ASR without evidence."
+    },
+    {
+      "id": "CANDIDATE_D_GOPT",
+      "selected_for_competition_mvp": false,
+      "status": "NOT_SELECTED_FOR_COMPETITION_MVP",
+      "reason": "Optional research benchmark with Kaldi/GOP/Windows integration cost disproportionate to the two-week MVP."
+    }
+  ],
+  "calibration": {
+    "minimum_scorable_ratings": 8,
+    "minimum_distinct_levels": 3,
+    "models": ["regularized ridge", "ordinal logistic if supported", "isotonic for one monotonic score if justified"],
+    "validation": "leave-one-out",
+    "metrics": ["MAE", "within-one-band agreement", "Spearman correlation", "quadratic weighted kappa", "predicted-vs-human table"],
+    "backend_selection_priority": ["cross-validated agreement", "stability", "explainability", "reliable local execution", "runtime/integration simplicity"],
+    "training_fit_alone_is_not_selection_evidence": true
+  },
+  "construct_separation": {
+    "pronunciation": "accuracy/clarity of speech sounds and words",
+    "intelligibility": "ease of listener understanding without transcript",
+    "prosody": "rhythm, phrasing, stress and intonation",
+    "keep_separate_until_human_relationship_is_measured": true
+  },
+  "forbidden": ["deep-model fine-tuning on 12 videos", "CEFR claim", "B2 claim", "IELTS claim", "native-likeness claim", "accent-reduction claim"]
+}

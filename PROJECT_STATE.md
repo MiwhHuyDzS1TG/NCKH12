@@ -1181,3 +1181,62 @@ This preparation sprint makes the existing development-only scorer ready to run 
 **Current blocker:** teacher completes the 12-video human rating queue.
 **Next action:** after ratings are saved, run development calibration once, inspect its label variation and leave-one-out diagnostics, then review the first real preliminary scores. Do not use holdout or start feedback/pronunciation work in this sprint.
 
+---
+
+# P2.3 PRONUNCIATION TRACK — PREPARED (2026-10-30)
+
+Pronunciation is now a separate controlled-reading criterion. This sprint prepared four-criterion human ground truth and machine-pronunciation benchmarking before any teacher Pronunciation label existed. It did not fit a scorer, create a numeric Pronunciation result, use the fixed holdout, implement feedback, or train/fine-tune a neural model. Competition readiness remains 54/100 until human evidence and real calibrated output exist.
+
+## Human rubric and versioning
+
+The focused `Teacher Rating — P2.2A` page now collects four integer 1–5 criteria:
+
+- **Fluency:** smoothness, continuity, pauses, hesitations, repetitions/self-corrections, and flow; pronunciation is explicitly excluded.
+- **Pronunciation:** accuracy and clarity of English words/sounds, including consonants/vowels, final sounds, omitted/misproduced sounds, word pronunciation, and clearly noticeable word stress. A Vietnamese/non-native accent alone must not reduce the rating.
+- **Intelligibility:** how easily the learner is understood without the transcript; accent alone must not reduce the rating.
+- **Prosody:** rhythm, phrasing, sentence stress, and intonation; it remains separate from Fluency and Pronunciation.
+
+`Pronunciation examples / problematic words` is optional. The teacher page shows no ASR confidence, WPM, pause statistics, OpenPronounce/GOPT output, or machine score. `Save & Next` and X/12 progress remain.
+
+The original private `ratings_v1.json` was hash-checked and left unchanged. A separate `ratings_v2.json` uses schema `P2.3-four-criterion-v2`, retains all previous fields/provenance, adds `pronunciation=null`, `pronunciation_examples=""`, item schema version and rater metadata, and records the source hash. Current human progress remains 0/12 and all 12 Pronunciation values remain null. Re-rating an already confirmed item appends the previous record to history instead of silently deleting it.
+
+## Frozen benchmark plan and evidence contract
+
+`speaking_evidence/specs/pronunciation_benchmark_plan_v1.json` was frozen while ratings were 0/12. It predeclares backend candidates, the raw-audio invariant, target-word policy, calibration gates, metrics, backend-selection priorities and prohibited claims. `speaking_evidence/schemas/pronunciation_evidence_v1.schema.json` defines versioned utterance-, word-, and optional phone-level evidence with backend/model version, runtime, confidence, analyzed coverage and limitations.
+
+All pronunciation input must be `RAW_COMPLETED_DUET` audio cropped/masked with Phase-1 learner timestamps. `residual` and `cancel` filenames/provenance are rejected. Reference-cancellation output remains detection-only.
+
+The deterministic target-vs-selected-ASR edit alignment assigns:
+
+- `MATCHED`: eligible for pronunciation analysis;
+- `OMITTED`: Completeness only, never forced into phone alignment or penalized again;
+- `INSERTED`: stored separately and excluded from target pronunciation accuracy;
+- `SUBSTITUTED_OR_UNCERTAIN`: uncertain, with no automatic exact phoneme diagnosis.
+
+Across the 12 development artifacts, 1,430 of 1,704 target-word instances are `MATCHED`, 107 are `OMITTED`, and 167 are `SUBSTITUTED_OR_UNCERTAIN`; analyzed coverage ranges from 0.6268 to 0.9366. These are ASR-assisted alignment counts, not human pronunciation-error counts.
+
+## Candidate backends and current status
+
+- **Baseline A — faster-whisper recognition proxy:** versioned evidence exists for all 12 development items. It retains mean word probability, fixed low-confidence fraction, target/ASR match coverage and the explicit absence of single-pass recognition stability. It is labeled an Intelligibility/recognition baseline, not a true pronunciation model; every human-calibrated Pronunciation score is null.
+- **Candidate B — OpenPronounce:** optional integration is pinned to PyPI `openpronounce==0.3.0`, release commit `8b1e8a3e49eae92756cf7c8335f00f3917f431b8`, with model provenance `facebook/wav2vec2-large-960h` and `facebook/wav2vec2-lv-60-espeak-cv-ft`. The Python package installed. FFmpeg works. The official eSpeak NG 1.52.0 MSI system install returned Windows error 1603; an SHA-256-verified administrative extraction succeeded, but its executable failed the repeatable runtime probe with Windows exit `3221225477` (`0xC0000005`, access violation). Status is `BLOCKED_ESPEAK_NG_RUNTIME_FAILURE`. No model weights were downloaded/loaded, no raw score was accepted, and the optional failure does not affect the core app.
+- **Candidate C — alignment:** not selected for this sprint. Existing selected-ASR word timings are sufficient to gate matched words for the first benchmark. WhisperX alignment is the single preferred future option only if measured backend failures show a material need; it must not replace the validated small.en recognizer without evidence.
+- **Candidate D — GOPT:** `NOT_SELECTED_FOR_COMPETITION_MVP`. It remains an optional later research benchmark because reproducible GOP/Kaldi/Windows integration cost is disproportionate to the two-week competition MVP.
+
+The OpenPronounce adapter is fail-closed and optional. If dependencies become reliable, it analyzes contiguous `MATCHED` word runs only and can retain raw score, per-word/phone candidate evidence, backend/model versions, runtime, difficult-word candidates and acoustically supported word-final phone candidates. It never treats its raw 0–100 output as ground truth. Unsupported stress/final-sound diagnoses remain unavailable rather than being manufactured.
+
+## Calibration readiness and limits
+
+Pronunciation calibration is prepared but returns `WAITING_FOR_HUMAN_CALIBRATION`. It requires at least eight SCORABLE integer Pronunciation ratings, at least three distinct rating levels, development-queue IDs only, and no holdout. The predeclared small ridge mapping uses leave-one-out validation and reports MAE, within-one-band agreement, Spearman correlation, quadratic weighted kappa when meaningful, predicted-vs-human rows, uncertainty and sample-size limitations. No deep model is trained on 12 videos.
+
+Pronunciation, Intelligibility and Prosody remain separate. A gated relationship function will calculate Pronunciation-vs-Intelligibility Spearman correlation only after all 12 queue items are completed; it will report possible redundancy for later review rather than automatically removing a criterion.
+
+Scientific limitations remain substantial: OpenPronounce is currently blocked on this Windows eSpeak runtime; its Wav2Vec2 models are large and trained mainly on adult/read speech; child speech, Vietnamese-accented speech and noise can create false alarms; ASR-aligned word boundaries are approximate; and 12 development ratings are too small for a stable general claim. No CEFR, B2, IELTS, native-likeness or accent-reduction claim is allowed.
+
+## Verification and next task
+
+- Full normal test suite: **64 passed, 3 skipped**; Python compilation passed.
+- Tests enforce the fourth required integer rating, source-schema preservation/history, teacher anchoring protection, development/holdout separation, raw-Duet provenance, residual rejection, omission/double-penalty guard, ASR-uncertainty semantics, construct separation, benchmark-plan/version pins, deterministic baseline rerun, nonfatal optional-backend failure, and prepared LOO/QWK metrics.
+- Fixed 18-video holdout media/outcomes were not opened, processed, or used.
+
+**Next task:** the teacher completes 12 four-criterion ratings. Then run development-only pronunciation backend benchmarking/calibration; do not select a final backend or produce a Pronunciation x.x/5 score before those labels exist.
+

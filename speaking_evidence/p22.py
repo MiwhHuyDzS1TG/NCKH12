@@ -25,7 +25,7 @@ GREEN_IDS = ("T001-D005", "T001-D007", "T001-D015", "T001-D028", "T001-D039",
              "T001-D041", "T001-D046", "T001-D059", "T001-D068")
 AMBER_IDS = ("T001-D009", "T001-D010", "T001-D034")
 RATING_IDS = GREEN_IDS + AMBER_IDS
-LABELS = ("fluency", "intelligibility", "prosody")
+LABELS = ("fluency", "pronunciation", "intelligibility", "prosody")
 DISCLAIMER = ["DEVELOPMENT / PRELIMINARY CALIBRATION", "NOT CEFR", "NOT B2", "NOT IELTS"]
 WAITING_FOR_HUMAN_CALIBRATION = "WAITING_FOR_HUMAN_CALIBRATION"
 WAITING_FOR_TARGET_CONFIRMATION = "WAITING_FOR_TARGET_CONFIRMATION"
@@ -274,7 +274,8 @@ def generate_selected_evidence(ground_truth_dir: Path, evidence_dir: Path, confi
 
 
 def save_rating(path: Path, pair_id: str, scorability: str, scores: dict, note: str,
-                confirmed: bool) -> dict:
+                confirmed: bool, pronunciation_examples: str = "",
+                rater_metadata: dict | None = None) -> dict:
     payload = json.loads(path.read_text(encoding="utf-8"))
     item = next(x for x in payload["items"] if x["pair_id"] == pair_id)
     if not confirmed:
@@ -284,9 +285,15 @@ def save_rating(path: Path, pair_id: str, scorability: str, scores: dict, note: 
     if scorability == "NOT_SCORABLE":
         scores = {name: None for name in LABELS}
     elif any(not isinstance(scores.get(name), int) or not 1 <= scores[name] <= 5 for name in LABELS):
-        raise ValueError("All three ratings must be integers from 1 to 5")
+        raise ValueError("All four ratings must be integers from 1 to 5")
+    if item.get("human_confirmed") is True:
+        payload.setdefault("history", []).append({"pair_id": pair_id,
+                                                   "superseded_at_utc": now_utc(),
+                                                   "previous_rating": copy.deepcopy(item)})
     item.update({**scores, "amber_scorability": scorability if item["quality_gate"] == "AMBER" else "NOT_REQUIRED",
-                 "note": note, "human_confirmed": True, "rated_at_utc": now_utc()})
+                 "note": note, "pronunciation_examples": pronunciation_examples,
+                 "rater_metadata": rater_metadata if rater_metadata is not None else item.get("rater_metadata"),
+                 "human_confirmed": True, "rated_at_utc": now_utc()})
     write_json(path, payload)
     return item
 
@@ -543,7 +550,10 @@ def calibrate(ground_truth_dir: Path, evidence_dir: Path, target_path: Path,
     target = json.loads(target_path.read_text(encoding="utf-8"))
     if target.get("human_confirmed") is not True:
         raise ValueError("Human-confirmed target text is required")
-    ratings_payload = json.loads((ground_truth_dir / "ratings_v1.json").read_text(encoding="utf-8"))
+    ratings_path = (ground_truth_dir / "ratings_v2.json"
+                    if (ground_truth_dir / "ratings_v2.json").is_file()
+                    else ground_truth_dir / "ratings_v1.json")
+    ratings_payload = json.loads(ratings_path.read_text(encoding="utf-8"))
     if ratings_payload.get("holdout_used") is not False:
         raise ValueError("Calibration rating artifact must explicitly exclude holdout")
     ratings = ratings_payload["items"]
@@ -586,6 +596,9 @@ def calibrate(ground_truth_dir: Path, evidence_dir: Path, target_path: Path,
                      "completeness_score": complete["criterion_score_1_5"],
                      **{name: acoustic.get(name, 0.0) or 0.0 for name in PROSODY_FEATURES}})
     mappings = {"fluency": fit_ridge_mapping(rows, "fluency", FLUENCY_FEATURES),
+                "pronunciation": {"status": "SEPARATE_P23_CALIBRATION_REQUIRED",
+                                    "included_in_overall": False,
+                                    "reason": "Pronunciation uses separately benchmarked pronunciation evidence; no proxy score is substituted."},
                 "intelligibility": fit_ridge_mapping(rows, "intelligibility", INTELLIGIBILITY_FEATURES),
                 "prosody": fit_ridge_mapping(rows, "prosody", PROSODY_FEATURES),
                 "completeness": {"status": "DEVELOPMENT_PRELIMINARY_DIRECT_EVIDENCE",
@@ -604,6 +617,8 @@ def calibrate(ground_truth_dir: Path, evidence_dir: Path, target_path: Path,
         overall_ready = all(value is not None for value in required)
         item = {"pair_id": row["pair_id"], "labels": DISCLAIMER,
                 "fluency": fluency_score,
+                "pronunciation": None,
+                "pronunciation_status": "WAITING_FOR_SEPARATE_P23_CALIBRATION",
                 "intelligibility": intelligibility_score,
                 "completeness": completeness_score,
                 "prosody": apply_mapping(mappings["prosody"], row),
