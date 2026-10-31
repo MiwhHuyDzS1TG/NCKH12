@@ -1077,6 +1077,13 @@ def _phase2_assessment_result_dashboard() -> None:
     summary_path = evidence_root / "calibration_summary.json"
     summary = json.loads(summary_path.read_text(encoding="utf-8")) if summary_path.is_file() else None
     score = next((item for item in summary.get("scores", []) if item["pair_id"] == pair_id), None) if summary else None
+    mappings = summary.get("mappings", {}) if summary else {}
+
+    def criterion_status(name: str, value: float | None) -> str:
+        mapping = mappings.get(name, {})
+        if value is None:
+            return mapping.get("status") or "WAITING FOR HUMAN CALIBRATION"
+        return mapping.get("support_label") or mapping.get("status") or "DEVELOPMENT PRELIMINARY"
     completed = 0
     if ratings_path.is_file():
         ratings = json.loads(ratings_path.read_text(encoding="utf-8"))["items"]
@@ -1085,17 +1092,18 @@ def _phase2_assessment_result_dashboard() -> None:
     st.subheader("Criterion assessment state")
     criterion_rows = [
         ("Fluency", score.get("fluency") if score else None,
-         "DEVELOPMENT PRELIMINARY · SMALL SAMPLE" if score and score.get("fluency") is not None else "WAITING FOR HUMAN CALIBRATION",
+         criterion_status("fluency", score.get("fluency") if score else None),
          {key: evidence["aggregate_fluency_evidence"].get(key) for key in
           ("pause_ratio", "long_pause_count", "longest_pause_sec", "mean_length_of_run_words", "speech_rate_wpm")},
          "Timing evidence is ASR/Phase-1 dependent."),
         ("Pronunciation", score.get("pronunciation") if score else None,
          "PRONUNCIATION EVIDENCE PENDING · BACKEND PENDING",
          {"status": pronunciation.get("status") if pronunciation else "EVIDENCE_PENDING",
-          "analyzed_coverage": pronunciation.get("utterance", {}).get("analyzed_coverage") if pronunciation else None},
+          "analyzed_coverage": pronunciation.get("utterance", {}).get("analyzed_coverage") if pronunciation else None,
+          "human_rating_retained": score.get("pronunciation_human_rating") if score else None},
          "ASR recognition is not a true pronunciation diagnosis; no proxy score is forced."),
         ("Intelligibility", score.get("intelligibility") if score else None,
-         "DEVELOPMENT PRELIMINARY · SMALL SAMPLE" if score and score.get("intelligibility") is not None else "WAITING FOR HUMAN CALIBRATION",
+         criterion_status("intelligibility", score.get("intelligibility") if score else None),
          {"mean_word_probability": sum(probabilities) / len(probabilities) if probabilities else None,
           "recognized_word_count": len(probabilities)},
          "ASR mismatch is not automatically a learner error."),
@@ -1107,7 +1115,7 @@ def _phase2_assessment_result_dashboard() -> None:
           "insertions": len(completeness.get("insertions", [])) if completeness else None},
          completeness.get("warning") if completeness else "Target/alignment evidence is not ready."),
         ("Prosody", score.get("prosody") if score else None,
-         "DEVELOPMENT PRELIMINARY · SEPARATE" if score and score.get("prosody") is not None else "WAITING FOR HUMAN CALIBRATION",
+         criterion_status("prosody", score.get("prosody") if score else None),
          {key: turn["acoustic"].get(key) for key in
           ("f0_range_semitones", "f0_std_semitones", "intensity_std_db", "voiced_fraction")},
          "Prosody remains separate from Overall until independently reviewed."),
@@ -1123,8 +1131,8 @@ def _phase2_assessment_result_dashboard() -> None:
         st.metric("Overall Controlled-Reading Score", f"{score['overall_controlled_reading_score']:.2f} / 5")
         st.caption("Transparent mean of validated/preliminary Fluency, Intelligibility, and Completeness only.")
     else:
-        st.error("WAITING FOR HUMAN CALIBRATION")
-        st.caption(f"Human ratings: {completed}/12. Không có numeric score giả.")
+        st.info("CRITERION PROFILE ONLY · OVERALL SCORE NOT CREATED")
+        st.caption(f"Human ratings: {completed}/12. Criteria with unstable or unsupported mappings remain non-numeric.")
     st.subheader("Future feedback")
     st.info("FEEDBACK NOT YET GENERATED")
     st.caption("The Phase 3 input contract is ready, but no learner advice is generated before calibrated evidence is reviewed.")

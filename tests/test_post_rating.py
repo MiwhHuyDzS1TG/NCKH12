@@ -32,6 +32,16 @@ def _fixture(root: Path, completed: bool) -> None:
         })
         if completed:
             probability = .65 + index * .02
+            pair_root = root / f"assessment_runs/T001_p22_calibrated_v01/pairs/{pair_id}"
+            model_input = pair_root / "raw_learner_audio.wav"
+            model_input.parent.mkdir(parents=True, exist_ok=True)
+            model_input.write_bytes(b"test-fixture-raw-derived-audio")
+            _write(pair_root / "raw_evidence.json", {
+                "pair_id": pair_id,
+                "raw_duet_path": f"data/duets/T001/{pair_id}.mp4",
+                "model_input_ref": f"pairs/{pair_id}/raw_learner_audio.wav",
+                "canonical_source": "RAW_COMPLETED_DUET",
+            })
             _write(root / f"assessment_runs/T001_p22_calibrated_v01/pairs/{pair_id}/evidence.json",
                    {"pair_id": pair_id, "scope": "DEVELOPMENT_ONLY", "holdout": False,
                     "audio_provenance": {"canonical_source": "RAW_COMPLETED_DUET"},
@@ -97,12 +107,15 @@ def test_preflight_accepts_complete_development_only_four_criterion_queue(tmp_pa
 def test_complete_fixture_runs_development_calibration_and_keeps_pronunciation_pending(tmp_path):
     _fixture(tmp_path, completed=True)
     result = run_after_ratings(tmp_path)
-    assert result["status"] == "DEVELOPMENT_PRELIMINARY_CALIBRATION_COMPLETE"
+    assert result["status"] == "DEVELOPMENT_PRELIMINARY_SUPPORT_AWARE_CALIBRATION_COMPLETE"
     assert result["pronunciation_status"] == "EVIDENCE_ONLY_BACKEND_PENDING"
+    assert result["teacher_rating_audio_source"] == "RAW_CROPPED"
+    assert result["rating_snapshot"]["raw_labels_modified"] is False
     summary_path = tmp_path / "assessment_runs/T001_p22_calibrated_v01/calibration_summary.json"
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert len(summary["scores"]) == 12
     assert all(row["pronunciation"] is None for row in summary["scores"])
+    assert all(row["overall_controlled_reading_score"] is None for row in summary["scores"])
     assert summary["holdout_processed"] is False
     reports = tmp_path / "calibration/p22a_v01/criterion_reports_v01"
     assert {path.name for path in reports.glob("*_calibration_report_v01.json")} == {

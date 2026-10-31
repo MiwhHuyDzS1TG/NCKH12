@@ -7,6 +7,7 @@ evidence before delegating to the predeclared P2.2 calibration code.
 from __future__ import annotations
 
 import json
+import math
 import sys
 from collections import Counter
 from pathlib import Path
@@ -19,8 +20,71 @@ from speaking_evidence.p22 import (
     calibration_readiness,
 )
 from speaking_evidence.runner import write_json
+from speaking_evidence.support_aware import (
+    audit_teacher_rating_audio,
+    freeze_rating_snapshot,
+    select_coverage_expansion,
+)
 
 VERSION = "P2.2C-post-rating-runner-v0.1"
+
+
+def _pronunciation_exploratory_association(evidence_root: Path,
+                                           ratings: list[dict]) -> dict:
+    """Association only: ASR recognition proxies are never pronunciation errors/scores."""
+    rows = []
+    by_id = {row["pair_id"]: row for row in ratings}
+    for pair_id in RATING_IDS:
+        path = evidence_root / "pairs" / pair_id / "pronunciation_asr_baseline_v1.json"
+        if not path.is_file():
+            continue
+        baseline = json.loads(path.read_text(encoding="utf-8"))
+        proxy = baseline.get("utterance", {}).get("recognition_proxy", {})
+        rows.append({
+            "pair_id": pair_id,
+            "human_pronunciation": by_id[pair_id]["pronunciation"],
+            "human_intelligibility": by_id[pair_id]["intelligibility"],
+            "mean_word_probability": proxy.get("mean_word_probability"),
+            "low_confidence_word_fraction": proxy.get("low_confidence_word_fraction"),
+            "target_asr_match_coverage": proxy.get("target_asr_match_coverage"),
+        })
+    if len(rows) != len(RATING_IDS):
+        return {"status": "NOT_AVAILABLE_BASELINE_ARTIFACTS_MISSING", "n": len(rows),
+                "machine_pronunciation_score_created": False}
+    from scipy.stats import spearmanr
+
+    def correlation(field: str) -> float | None:
+        values = [row[field] for row in rows]
+        if any(value is None for value in values):
+            return None
+        statistic = float(spearmanr(values, [row["human_pronunciation"] for row in rows]).statistic)
+        return statistic if math.isfinite(statistic) else None
+
+    human_relationship = float(spearmanr(
+        [row["human_pronunciation"] for row in rows],
+        [row["human_intelligibility"] for row in rows],
+    ).statistic)
+    return {
+        "status": "EXPLORATORY_ASSOCIATION_ONLY",
+        "n": len(rows),
+        "human_pronunciation_support": sorted({row["human_pronunciation"] for row in rows}),
+        "spearman_human_pronunciation_vs_asr_proxy": {
+            field: correlation(field) for field in (
+                "mean_word_probability", "low_confidence_word_fraction",
+                "target_asr_match_coverage",
+            )
+        },
+        "spearman_human_pronunciation_vs_human_intelligibility": (
+            human_relationship if math.isfinite(human_relationship) else None
+        ),
+        "asr_mismatch_is_pronunciation_error": False,
+        "machine_pronunciation_score_created": False,
+        "warning": (
+            "ASR features are recognition/intelligibility proxies. Association does not validate "
+            "a pronunciation model or identify pronunciation errors."
+        ),
+        "holdout_processed": False,
+    }
 
 
 def _read_json(path: Path, reasons: list[str]) -> dict | None:
@@ -163,6 +227,19 @@ def run_after_ratings(root: Path) -> dict:
     ground = root / "human_ground_truth" / "p22a_v1"
     evidence = root / "assessment_runs" / "T001_p22_calibrated_v01"
     calibration_dir = root / "calibration" / "p22a_v01"
+    ratings_path = ground / "ratings_v2.json"
+    ratings_payload = json.loads(ratings_path.read_text(encoding="utf-8"))
+    audio_audit = audit_teacher_rating_audio(evidence, ratings_payload["items"])
+    if audio_audit["teacher_rating_audio_source"] == "UNKNOWN":
+        return {"version": VERSION, "status": "STOPPED_AUDIO_PROVENANCE_UNKNOWN",
+                "preflight": preflight, "audio_source_audit": audio_audit,
+                "calibration_created": False, "holdout_processed": False,
+                "labels": DISCLAIMER}
+    frozen = freeze_rating_snapshot(
+        ratings_path,
+        ground / "frozen" / "p22c_v1",
+        audio_audit,
+    )
     result = calibrate(
         ground,
         evidence,
@@ -170,7 +247,7 @@ def run_after_ratings(root: Path) -> dict:
         calibration_dir,
         evidence,
     )
-    if result.get("status") != "DEVELOPMENT_PRELIMINARY_CALIBRATION_READY":
+    if result.get("status") != "DEVELOPMENT_PRELIMINARY_SUPPORT_AWARE_CALIBRATION_COMPLETE":
         return {"version": VERSION, "status": "STOPPED_AFTER_PREFLIGHT",
                 "preflight": preflight, "calibration": result,
                 "calibration_created": False, "holdout_processed": False,
@@ -183,6 +260,9 @@ def run_after_ratings(root: Path) -> dict:
         "human_label_distribution": preflight["label_distribution"]["pronunciation"],
         "human_calibrated_score": None,
         "backend_status": "BLOCKED_ESPEAK_NG_RUNTIME_FAILURE",
+        "exploratory_asr_association": _pronunciation_exploratory_association(
+            evidence, ratings_payload["items"]
+        ),
         "reason": (
             "Teacher ratings exist, but the current ASR baseline is not a defensible true "
             "pronunciation model. No proxy score is forced."
@@ -192,12 +272,42 @@ def run_after_ratings(root: Path) -> dict:
     }
     report_dir = calibration_dir / "criterion_reports_v01"
     write_json(report_dir / "pronunciation_calibration_report_v01.json", pronunciation_status)
+    development_path = root / "cohort_runs" / "T001_p14" / "development_manifest_v3.json"
+    split_path = root / "cohort_runs" / "T001_p14" / "data_split_v2.json"
+    if development_path.is_file() and split_path.is_file():
+        coverage_expansion = select_coverage_expansion(
+            json.loads(development_path.read_text(encoding="utf-8")),
+            json.loads(split_path.read_text(encoding="utf-8")),
+            RATING_IDS,
+            count=6,
+        )
+        write_json(calibration_dir / "calibration_coverage_expansion_v1.json", coverage_expansion)
+    else:
+        coverage_expansion = {
+            "status": "NOT_GENERATED_DEVELOPMENT_MANIFEST_UNAVAILABLE",
+            "selected_ids": [],
+            "selection_uses_human_scores": False,
+            "holdout_processed": False,
+        }
     run_summary = {
         "version": VERSION,
-        "status": "DEVELOPMENT_PRELIMINARY_CALIBRATION_COMPLETE",
+        "status": "DEVELOPMENT_PRELIMINARY_SUPPORT_AWARE_CALIBRATION_COMPLETE",
         "preflight": preflight,
         "calibration_status": result["status"],
+        "rating_snapshot": {
+            "status": frozen["status"],
+            "source_sha256": frozen["source_sha256"],
+            "snapshot_sha256": frozen["snapshot_sha256"],
+            "raw_labels_modified": frozen["raw_labels_modified"],
+            "provenance": frozen["rating_provenance"]["classification"],
+        },
+        "teacher_rating_audio_source": audio_audit["teacher_rating_audio_source"],
         "pronunciation_status": pronunciation_status["status"],
+        "coverage_expansion": {
+            "status": coverage_expansion["status"],
+            "selected_ids": coverage_expansion["selected_ids"],
+        },
+        "overall_score_created": False,
         "holdout_processed": False,
         "labels": DISCLAIMER,
     }
@@ -216,12 +326,15 @@ def main() -> int:
     print("Label distribution:")
     for criterion, distribution in preflight["label_distribution"].items():
         print(f"  - {criterion}: {distribution}")
-    if result["status"] == "STOPPED":
+    if result["status"] != "DEVELOPMENT_PRELIMINARY_SUPPORT_AWARE_CALIBRATION_COMPLETE":
         print("\nSTOPPED. No calibrated scores were created:")
-        for reason in preflight["reasons"]:
+        for reason in preflight.get("reasons", []):
             print(f"  - {reason}")
+        if result.get("audio_source_audit"):
+            print("  - Teacher rating audio provenance could not be verified as raw-derived.")
         return 2
-    print("\nDevelopment calibration completed.")
+    print("\nSupport-aware development calibration completed.")
+    print(f"Teacher rating audio: {result['teacher_rating_audio_source']}")
     print("Pronunciation: EVIDENCE_ONLY_BACKEND_PENDING (no forced proxy score).")
     print("Holdout processed: NO")
     print("DEVELOPMENT / PRELIMINARY | NOT CEFR | NOT B2 | NOT IELTS")

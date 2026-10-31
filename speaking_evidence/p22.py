@@ -19,6 +19,10 @@ from speaking_evidence.asr import FasterWhisperBackend, validate_words
 from speaking_evidence.audio import prepare_turn_audio, sha256_file
 from speaking_evidence.p21b import map_profile_to_duet
 from speaking_evidence.runner import gate_status, load_development, write_json
+from speaking_evidence.support_aware import (
+    apply_restricted_binary_mapping,
+    fit_restricted_binary_mapping,
+)
 from speaking_evidence.wer import word_error_counts, words_for_wer
 
 VERSION = "P2.2A-v0.1"
@@ -412,7 +416,11 @@ def _quadratic_weighted_kappa(human: np.ndarray, predicted: np.ndarray) -> float
 
 
 def calibration_readiness(ratings: list[dict]) -> dict:
-    """Check the pre-declared gate without inspecting machine/label correlations."""
+    """Check global integrity while allowing criterion-specific observed support.
+
+    Restricted-range labels are a property to report, not a reason to fabricate
+    missing levels or block every other criterion.
+    """
     unexpected = sorted({row.get("pair_id") for row in ratings} - set(RATING_IDS))
     if unexpected:
         raise ValueError(f"Calibration contains non-development queue IDs: {unexpected}")
@@ -425,14 +433,27 @@ def calibration_readiness(ratings: list[dict]) -> dict:
     reasons = []
     if len(usable) < 8:
         reasons.append(f"At least 8 SCORABLE human-rated videos are required; available={len(usable)}")
+    criterion_support = {}
     for label, levels in variation.items():
-        if len(levels) < 3:
-            reasons.append(f"{label} requires at least 3 distinct human rating levels; available={levels}")
+        if len(levels) == 1:
+            status = "EVIDENCE_ONLY_SINGLE_OBSERVED_LEVEL"
+        elif len(levels) == 2:
+            status = "ELIGIBLE_RESTRICTED_RANGE_CALIBRATION"
+        elif len(levels) >= 3:
+            status = "ELIGIBLE_MULTI_LEVEL_CALIBRATION"
+        else:
+            status = "NO_HUMAN_SUPPORT"
+        criterion_support[label] = {
+            "observed_levels": levels,
+            "observed_range": [min(levels), max(levels)] if levels else None,
+            "status": status,
+        }
     return {
         "status": "READY_FOR_DEVELOPMENT_CALIBRATION" if not reasons else WAITING_FOR_HUMAN_CALIBRATION,
         "usable_human_ratings": len(usable),
         "required_minimum": 8,
         "label_variation": variation,
+        "criterion_support": criterion_support,
         "reasons": reasons,
     }
 
@@ -544,6 +565,7 @@ def fit_ridge_mapping(rows: list[dict], label: str, feature_names: tuple[str, ..
     y = np.asarray([float(r[label]) for r in rows])
     if len(set(y)) < 3:
         return {"status": "INSUFFICIENT_LABEL_VARIATION", "unique_labels": sorted(set(y.tolist()))}
+    lower, upper = float(y.min()), float(y.max())
     x = np.asarray([[float(r[name]) for name in feature_names] for r in rows], dtype=float)
     def fit_predict(train_x, train_y, test_x):
         mu, sd = train_x.mean(axis=0), train_x.std(axis=0)
@@ -552,7 +574,7 @@ def fit_ridge_mapping(rows: list[dict], label: str, feature_names: tuple[str, ..
         design = np.column_stack([np.ones(len(z)), z])
         penalty = np.eye(design.shape[1]) * alpha; penalty[0, 0] = 0
         beta = np.linalg.solve(design.T @ design + penalty, design.T @ train_y)
-        return float(np.clip(np.r_[1.0, (test_x - mu) / sd] @ beta, 1, 5)), mu, sd, beta
+        return float(np.clip(np.r_[1.0, (test_x - mu) / sd] @ beta, lower, upper)), mu, sd, beta
     loo = []
     for i in range(len(rows)):
         keep = np.arange(len(rows)) != i
@@ -566,9 +588,10 @@ def fit_ridge_mapping(rows: list[dict], label: str, feature_names: tuple[str, ..
          "absolute_error": round(float(absolute_errors[index]), 4)}
         for index, row in enumerate(rows)
     ]
-    return {"status": "DEVELOPMENT_PRELIMINARY", "model": "ridge_linear_clipped_1_5",
+    return {"status": "DEVELOPMENT_PRELIMINARY", "model": "ridge_linear_clipped_observed_support",
             "alpha": alpha, "features": list(feature_names), "feature_mean": mu.tolist(),
             "feature_scale": sd.tolist(), "intercept": float(beta[0]), "coefficients": beta[1:].tolist(),
+            "observed_support": sorted(set(y.tolist())), "output_constraint": [lower, upper],
             "n": len(rows), "label_distribution": {str(k): int(sum(y == k)) for k in range(1, 6)},
             "validation": "LEAVE_ONE_OUT",
             "loo_mae": float(np.mean(absolute_errors)),
@@ -581,12 +604,64 @@ def fit_ridge_mapping(rows: list[dict], label: str, feature_names: tuple[str, ..
             "labels": DISCLAIMER}
 
 
-def apply_mapping(mapping: dict, features: dict) -> float | None:
+def fit_support_aware_mapping(rows: list[dict], label: str,
+                              feature_names: tuple[str, ...]) -> dict:
+    """Fit only within observed human support and expose criterion stability."""
+    support = sorted({int(row[label]) for row in rows})
+    if not support:
+        return {"status": "NO_HUMAN_SUPPORT", "observed_support": []}
+    if len(support) == 1:
+        return {
+            "status": "EVIDENCE_ONLY_SINGLE_OBSERVED_LEVEL",
+            "observed_support": support,
+            "learner_facing_score_allowed": False,
+            "reason": "A single observed human level cannot support supervised calibration.",
+        }
+    if len(support) == 2:
+        mapping = fit_restricted_binary_mapping(rows, label, feature_names)
+        predicted = mapping.get("predicted_vs_human", [])
+        if predicted:
+            mapping["spearman_correlation"] = _spearman(
+                np.asarray([row["predicted_expected_score"] for row in predicted]),
+                np.asarray([row["human"] for row in predicted]),
+            )
+        mapping["coefficient_directions"] = {
+            name: ("POSITIVE" if coefficient > 0 else "NEGATIVE" if coefficient < 0 else "ZERO")
+            for name, coefficient in zip(mapping.get("features", []), mapping.get("coefficients", []))
+        }
+        return mapping
+    mapping = fit_ridge_mapping(rows, label, feature_names)
     if mapping.get("status") != "DEVELOPMENT_PRELIMINARY":
+        return mapping
+    correlation = mapping.get("spearman_correlation")
+    stable = (mapping["loo_mae"] <= 1.0
+              and mapping["within_one_band_agreement"] >= 0.75
+              and correlation is not None and correlation >= 0.20)
+    mapping["status"] = ("DEVELOPMENT_PRELIMINARY_MULTI_LEVEL" if stable
+                         else "MACHINE_CALIBRATION_UNSTABLE")
+    mapping["learner_facing_score_allowed"] = stable
+    mapping["coefficient_directions"] = {
+        name: ("POSITIVE" if coefficient > 0 else "NEGATIVE" if coefficient < 0 else "ZERO")
+        for name, coefficient in zip(mapping["features"], mapping["coefficients"])
+    }
+    mapping["stability_rule"] = (
+        "LOOCV MAE <= 1.0, within-one-band agreement >= 0.75, and Spearman >= 0.20"
+    )
+    return mapping
+
+
+def apply_mapping(mapping: dict, features: dict) -> float | None:
+    if mapping.get("model") == "ridge_regularized_binary_logistic_expected_score":
+        return apply_restricted_binary_mapping(mapping, features)
+    if mapping.get("status") not in {
+        "DEVELOPMENT_PRELIMINARY", "DEVELOPMENT_PRELIMINARY_MULTI_LEVEL"
+    }:
         return None
     x = np.asarray([features[name] for name in mapping["features"]], dtype=float)
     z = (x - np.asarray(mapping["feature_mean"])) / np.asarray(mapping["feature_scale"])
-    return round(float(np.clip(mapping["intercept"] + z @ np.asarray(mapping["coefficients"]), 1, 5)), 2)
+    lower, upper = mapping.get("output_constraint", [1, 5])
+    return round(float(np.clip(mapping["intercept"] + z @ np.asarray(mapping["coefficients"]),
+                               lower, upper)), 2)
 
 
 def calibrate(ground_truth_dir: Path, evidence_dir: Path, target_path: Path,
@@ -639,17 +714,21 @@ def calibrate(ground_truth_dir: Path, evidence_dir: Path, target_path: Path,
         rows.append({**rating, **fluency, **transcript_features(selected_asr_record),
                      "completeness_score": complete["criterion_score_1_5"],
                      **{name: acoustic.get(name, 0.0) or 0.0 for name in PROSODY_FEATURES}})
-    mappings = {"fluency": fit_ridge_mapping(rows, "fluency", FLUENCY_FEATURES),
+    mappings = {"fluency": fit_support_aware_mapping(rows, "fluency", FLUENCY_FEATURES),
                 "pronunciation": {"status": "SEPARATE_P23_CALIBRATION_REQUIRED",
                                     "included_in_overall": False,
+                                    "observed_support": sorted({row["pronunciation"] for row in rows}),
+                                    "human_labels_preserved": True,
                                     "reason": "Pronunciation uses separately benchmarked pronunciation evidence; no proxy score is substituted."},
-                "intelligibility": fit_ridge_mapping(rows, "intelligibility", INTELLIGIBILITY_FEATURES),
-                "prosody": fit_ridge_mapping(rows, "prosody", PROSODY_FEATURES),
+                "intelligibility": fit_support_aware_mapping(rows, "intelligibility", INTELLIGIBILITY_FEATURES),
+                "prosody": fit_support_aware_mapping(rows, "prosody", PROSODY_FEATURES),
                 "completeness": {"status": "DEVELOPMENT_PRELIMINARY_DIRECT_EVIDENCE",
                                  "formula": "1 + 4 * target_sequence_coverage",
                                  "range": [1, 5], "thresholds": None,
                                  "warning": "ASR-based coverage is uncertain; human transcript is used where available"}}
-    if mappings["prosody"].get("status") == "DEVELOPMENT_PRELIMINARY":
+    if mappings["prosody"].get("status") in {
+        "DEVELOPMENT_PRELIMINARY", "DEVELOPMENT_PRELIMINARY_MULTI_LEVEL"
+    }:
         mappings["prosody"]["included_in_overall"] = False
         mappings["prosody"]["reason"] = "Held separate until acoustic evidence and teacher labels are independently reviewed"
     scores = []
@@ -657,26 +736,62 @@ def calibrate(ground_truth_dir: Path, evidence_dir: Path, target_path: Path,
         fluency_score = apply_mapping(mappings["fluency"], row)
         intelligibility_score = apply_mapping(mappings["intelligibility"], row)
         completeness_score = row["completeness_score"]
-        required = [fluency_score, intelligibility_score, completeness_score]
-        overall_ready = all(value is not None for value in required)
         item = {"pair_id": row["pair_id"], "labels": DISCLAIMER,
                 "fluency": fluency_score,
+                "fluency_status": mappings["fluency"].get("status"),
                 "pronunciation": None,
-                "pronunciation_status": "WAITING_FOR_SEPARATE_P23_CALIBRATION",
+                "pronunciation_human_rating": row["pronunciation"],
+                "pronunciation_status": "EVIDENCE_ONLY_BACKEND_PENDING",
                 "intelligibility": intelligibility_score,
+                "intelligibility_human_rating": row["intelligibility"],
+                "intelligibility_status": mappings["intelligibility"].get("status"),
                 "completeness": completeness_score,
+                "completeness_coverage": next(item["coverage"] for item in completeness
+                                               if item["pair_id"] == row["pair_id"]),
                 "prosody": apply_mapping(mappings["prosody"], row),
-                "overall_controlled_reading_score": round(mean(required), 2) if overall_ready else None,
-                "overall_components": ["fluency", "intelligibility", "completeness"],
-                "overall_formula": "unweighted mean of three validated/preliminary criterion mappings" if overall_ready else None,
-                "overall_status": "DEVELOPMENT_PRELIMINARY" if overall_ready else "UNAVAILABLE_INSUFFICIENT_MAPPING"}
+                "prosody_status": mappings["prosody"].get("status"),
+                "overall_controlled_reading_score": None,
+                "overall_components": [],
+                "overall_formula": None,
+                "overall_status": "NOT_CREATED_CRITERION_MAPPINGS_NOT_INDEPENDENTLY_DEFENSIBLE"}
         scores.append(item)
     result = {"version": CALIBRATION_REPORT_VERSION,
-              "status": "DEVELOPMENT_PRELIMINARY_CALIBRATION_READY",
+              "status": "DEVELOPMENT_PRELIMINARY_SUPPORT_AWARE_CALIBRATION_COMPLETE",
               "scope": "DEVELOPMENT_ONLY", "n_human_rated": len(rows),
               "mappings": mappings, "completeness_evidence": completeness,
               "scores": scores, "holdout_processed": False, "labels": DISCLAIMER,
-              "overall_note": "Overall is emitted only when Fluency, Intelligibility, and Completeness mappings are all available; Prosody remains separate"}
+              "best_take_context": (
+                  "Students practiced the controlled-reading passage and could submit a preferred take; "
+                  "upper-end clustering and restricted range are expected and are not artificially corrected."
+              ),
+              "rating_provenance": "HUMAN_REVIEWED_AI_ASSISTED",
+              "feedback_eligibility": {
+                  "fluency": {
+                      "automated_feedback_allowed": mappings["fluency"].get("learner_facing_score_allowed", False),
+                      "status": mappings["fluency"].get("status"),
+                  },
+                  "intelligibility": {
+                      "automated_feedback_allowed": mappings["intelligibility"].get("learner_facing_score_allowed", False),
+                      "status": mappings["intelligibility"].get("status"),
+                  },
+                  "prosody": {
+                      "automated_feedback_allowed": mappings["prosody"].get("learner_facing_score_allowed", False),
+                      "status": mappings["prosody"].get("status"),
+                  },
+                  "pronunciation": {
+                      "automated_feedback_allowed": False,
+                      "status": "EVIDENCE_ONLY_BACKEND_PENDING",
+                  },
+                  "completeness": {
+                      "automated_feedback_allowed": True,
+                      "status": "ASR_ASSISTED_READING_COMPLETENESS",
+                      "warning": "ASR differences are not proven learner reading errors.",
+                  },
+              },
+              "overall_note": (
+                  "No Overall score is created: criterion mappings have different support and validation "
+                  "states, and raw human ratings are never averaged with machine outputs."
+              )}
     report_dir = calibration_dir / "criterion_reports_v01"
     for criterion, mapping in mappings.items():
         report = {

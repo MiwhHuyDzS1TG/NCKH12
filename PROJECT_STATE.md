@@ -1280,3 +1280,59 @@ This sprint recovered and finished the interrupted preparation work without crea
 
 **Next action:** after the real queue reaches 12/12, double-click `RUN_CALIBRATION_AFTER_RATINGS.bat`, inspect the development-only reports and first preliminary results, and do not use the holdout or force a Pronunciation score.
 
+# P2.2C — SUPPORT-AWARE CALIBRATION (2026-10-31)
+
+The 12-video development queue is now complete: 12/12 are human-confirmed and SCORABLE. The source `ratings_v2.json` was frozen byte-for-byte before modeling. Its SHA-256 and the frozen snapshot SHA-256 both equal `6ffc1be2661c8ef3fbcf084c2cb4f83cec175d9f1996f20a444cdc6e13005f62`; the raw source labels were not edited. The private frozen snapshot and provenance manifest live under `human_ground_truth/p22a_v1/frozen/p22c_v1/` and remain excluded from Git.
+
+## Observed human-label support
+
+- Fluency: 4 = 8, 5 = 4.
+- Pronunciation: 3 = 5, 4 = 7.
+- Intelligibility: 4 = 10, 5 = 2.
+- Prosody: 2 = 1, 3 = 7, 4 = 3, 5 = 1.
+
+The task is a practiced, preferred-take controlled reading: students could rehearse the passage and submit a take they were satisfied with. Upper-end clustering in Fluency and Intelligibility is therefore a plausible task property, not a defect to repair by changing scores or adding synthetic low labels. This development sample must not be described as representing the full 1–5 speaking-ability continuum.
+
+## Rating provenance and audio-source audit
+
+The accurate label provenance is `HUMAN_REVIEWED_AI_ASSISTED`. The teacher personally listened to/reviewed the recordings and made or accepted the final decisions while using a ChatGPT conversation in the NCKH12 project as assistance. These data are suitable for preliminary development calibration, engineering selection and a competition prototype. They are not an `INDEPENDENT HUMAN GOLD STANDARD`, no inter-rater reliability is claimed, and they are not independent final validation data.
+
+The teacher UI presented the raw completed-Duet video and `raw_learner_audio.wav`. Artifact and code-path tracing across all 12 items classifies the audio source as `RAW_CROPPED`: `prepare_turn_audio` uses ffmpeg to crop mono 16 kHz PCM16 directly from the raw completed Duet and zeros samples outside Phase-1 learner intervals. No cancellation/residual audio enters the teacher-rating path. The masked signal can still contain background/template sound inside learner intervals, but it is not cancellation-processed audio; no raw-audio re-rating is required for this reason.
+
+## Support-aware policy and measured calibration
+
+The previous global requirement for at least three levels in every criterion was replaced by criterion-specific support handling:
+
+- one observed level: evidence only, no supervised calibration;
+- two observed levels: regularized binary probability/expected-score model constrained to the observed support;
+- three or more levels: small regularized multi-level model constrained to observed support;
+- every mapping is evaluated independently with leave-one-out cross-validation;
+- no oversampling, duplicated samples, SMOTE, synthetic labels or extrapolation to unobserved human levels is allowed.
+
+Measured development-only results:
+
+- **Fluency — `DEVELOPMENT_PRELIMINARY_RANGE_LIMITED`:** regularized binary logistic expected-score mapping constrained to [4, 5]. LOOCV MAE = 0.4204, classification accuracy = 0.6667, balanced accuracy = 0.6250, Spearman = 0.3073, no majority-class collapse. A preliminary machine Fluency value is allowed only inside [4, 5] and is labeled `DEVELOPMENT / PRELIMINARY / RANGE-LIMITED`.
+- **Intelligibility — `MACHINE_CALIBRATION_UNSTABLE`:** exploratory two-level [4, 5] model only. LOOCV MAE = 0.3138, balanced accuracy = 0.5000, Spearman = -0.3239, with majority-class collapse and only two level-5 examples. Human ratings and machine evidence are preserved, but no learner-facing automated Intelligibility score is emitted.
+- **Prosody — `MACHINE_CALIBRATION_UNSTABLE`:** four-level regularized model constrained to [2, 5]. LOOCV MAE = 0.6927 and within-one-band agreement = 0.7500, but Spearman = 0.1731, below the frozen stability rule. Prosody remains exploratory and no learner-facing numeric machine score is emitted.
+- **Pronunciation — `EVIDENCE_ONLY_BACKEND_PENDING`:** human support {3, 4} is preserved, but the ASR baseline is not treated as a pronunciation model. Exploratory Spearman associations with teacher Pronunciation were 0.1714 for mean word probability, -0.2203 for low-confidence fraction and 0.6131 for target/ASR match coverage; these are recognition/completeness associations, not proof of pronunciation validity or errors. Human Pronunciation versus human Intelligibility Spearman was 0.3780. OpenPronounce remains `BLOCKED_ESPEAK_NG_RUNTIME_FAILURE`; it was not retried and GOPT was not installed.
+- **Completeness — `ASR-assisted Reading Completeness`:** existing matched sequence, omissions, insertions and coverage evidence is retained. Current 12-item coverage spans approximately 0.6338–0.9437. ASR differences are not proven learner reading or pronunciation errors, and omitted words are not double-penalized as pronunciation errors.
+
+No Overall score was created. Machine mappings with different validation states, raw human ratings and uncalibrated pronunciation evidence are not averaged into one artificial value. The Assessment Result page now renders a criterion profile: supported criteria can be numeric, unstable criteria remain explicit non-numeric statuses, and Pronunciation remains backend-pending.
+
+## Optional development-only coverage expansion
+
+`calibration/p22a_v01/calibration_coverage_expansion_v1.json` contains an optional deterministic diversity queue selected only from the fixed development split using pre-existing Phase-1 machine evidence. No human score for candidate selection was read. Five, rather than six, additional candidates met the frozen safe eligibility policy: `T001-D006`, `T001-D023`, `T001-D064`, `T001-D043`, and `T001-D048`. The first two require teacher scorability confirmation because they are `SCORABLE_AFTER_CANCELLATION`; rating audio must still use raw completed-Duet crops. No unsafe sixth candidate was added merely to reach a nominal count. This expansion is optional for the range-limited MVP, not a requirement to manufacture lower scores.
+
+## Verification and limits
+
+- Targeted support-aware/calibration/feedback tests: 31 passed.
+- Full normal suite: **81 passed, 3 skipped**.
+- Python compilation passed for `app.py`, `duet_segmenter`, `duet_speech_lab`, `speaking_evidence`, and `scripts`.
+- The original 12 ratings and exact distributions are protected by byte/hash tests.
+- Two-level outputs are constrained to observed support; one-level criteria cannot calibrate; severe imbalance can produce `MACHINE_CALIBRATION_UNSTABLE`.
+- Expansion selection is deterministic, label-blind and development-only.
+- No holdout media or outcomes were opened, processed or used.
+- No CEFR, B2 or IELTS claim was introduced.
+
+**Next task:** obtain independent review of the P2.2C criterion reports, then choose either (a) proceed with evidence-grounded Phase-3 work for supported Fluency and Completeness only, or (b) optionally collect the five development coverage-expansion ratings before revisiting unstable criteria. Do not open the holdout or create an Overall/Pronunciation machine score.
+

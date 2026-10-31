@@ -67,8 +67,8 @@ def build_feedback_contract(evidence: dict, completeness: dict | None,
         "criteria": {
             "fluency": {
                 "score": row.get("fluency") if row else None,
-                "status": "DEVELOPMENT_PRELIMINARY" if row and row.get("fluency") is not None
-                else "WAITING_FOR_HUMAN_CALIBRATION",
+                "status": row.get("fluency_status", "DEVELOPMENT_PRELIMINARY")
+                if row else "WAITING_FOR_HUMAN_CALIBRATION",
                 "evidence": {key: fluency.get(key) for key in
                              ("pause_ratio", "long_pause_count", "longest_pause_sec",
                               "mean_length_of_run_words", "speech_rate_wpm",
@@ -87,8 +87,8 @@ def build_feedback_contract(evidence: dict, completeness: dict | None,
             },
             "intelligibility": {
                 "score": row.get("intelligibility") if row else None,
-                "status": "DEVELOPMENT_PRELIMINARY" if row and row.get("intelligibility") is not None
-                else "WAITING_FOR_HUMAN_CALIBRATION",
+                "status": row.get("intelligibility_status", "DEVELOPMENT_PRELIMINARY")
+                if row else "WAITING_FOR_HUMAN_CALIBRATION",
                 "evidence": {
                     "mean_word_probability": sum(probabilities) / len(probabilities) if probabilities else None,
                     "recognized_word_count": len(words),
@@ -109,8 +109,8 @@ def build_feedback_contract(evidence: dict, completeness: dict | None,
             },
             "prosody": {
                 "score": row.get("prosody") if row else None,
-                "status": "DEVELOPMENT_PRELIMINARY_SEPARATE" if row and row.get("prosody") is not None
-                else "WAITING_FOR_HUMAN_CALIBRATION",
+                "status": row.get("prosody_status", "DEVELOPMENT_PRELIMINARY_SEPARATE")
+                if row else "WAITING_FOR_HUMAN_CALIBRATION",
                 "evidence": {key: acoustic.get(key) for key in
                              ("f0_range_semitones", "f0_std_semitones",
                               "intensity_std_db", "voiced_fraction")},

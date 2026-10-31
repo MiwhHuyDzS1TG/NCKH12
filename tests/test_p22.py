@@ -182,13 +182,14 @@ def test_calibration_waits_without_human_labels_and_writes_no_scores(tmp_path):
     assert not (output / "calibration_summary.json").exists()
 
 
-def test_calibration_gate_rejects_non_queue_id_and_requires_variation():
+def test_calibration_gate_rejects_non_queue_id_but_reports_restricted_support():
     rows = [{"pair_id": pair_id, "human_confirmed": True, "amber_scorability": "NOT_REQUIRED",
              "fluency": 3, "pronunciation": 3, "intelligibility": 3, "prosody": 3}
             for pair_id in RATING_IDS[:8]]
     waiting = calibration_readiness(rows)
-    assert waiting["status"] == WAITING_FOR_HUMAN_CALIBRATION
-    assert any("distinct" in reason for reason in waiting["reasons"])
+    assert waiting["status"] == "READY_FOR_DEVELOPMENT_CALIBRATION"
+    assert waiting["criterion_support"]["fluency"]["status"] == "EVIDENCE_ONLY_SINGLE_OBSERVED_LEVEL"
+    assert not waiting["reasons"]
     with pytest.raises(ValueError, match="non-development"):
         calibration_readiness(rows + [{**rows[0], "pair_id": "T001-D001"}])
 
@@ -213,19 +214,22 @@ def test_p22b_prepared_artifacts_are_development_only_and_raw_source():
 
 @pytest.mark.skipif(not Path("human_ground_truth/p22a_v1/ratings_v1.json").is_file(),
                     reason="private human workflow artifacts are not distributed")
-def test_phase2_result_ui_shows_waiting_without_numeric_score():
+def test_phase2_result_ui_shows_criterion_profile_without_fake_overall():
     app = AppTest.from_file(str(Path(__file__).parents[1] / "app.py"), default_timeout=60)
     app.query_params["mode"] = "p22result"
     app.run()
     assert not app.exception
-    messages = [element.value for element in app.error]
-    assert "WAITING FOR HUMAN CALIBRATION" in messages
     rendered = " ".join(str(element.value) for group in
                         (app.title, app.caption, app.markdown, app.info, app.warning, app.error)
                         for element in group)
+    assert "CRITERION PROFILE ONLY" in rendered
     assert "PRONUNCIATION EVIDENCE PENDING" in rendered
     assert "FEEDBACK NOT YET GENERATED" in rendered
-    assert not Path("assessment_runs/T001_p22_calibrated_v01/calibration_summary.json").exists()
+    summary_path = Path("assessment_runs/T001_p22_calibrated_v01/calibration_summary.json")
+    if summary_path.is_file():
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        assert all(row.get("overall_controlled_reading_score") is None
+                   for row in summary.get("scores", []))
 
 
 @pytest.mark.skipif(not Path("human_ground_truth/p22a_v1/ratings_v1.json").is_file(),
@@ -252,4 +256,5 @@ def test_teacher_rating_page_is_focused_and_machine_score_blind():
     video.set_value("T001-D009").run()
     assert not app.exception
     assert app.selectbox(key="teacher_scorability_T001-D009").label == "SCORABLE / NOT SCORABLE"
-    assert app.button(key="teacher_save_T001-D009").disabled is True
+    # A completed real item is editable, with the prior record preserved in history.
+    assert app.button(key="teacher_save_T001-D009").disabled is False
