@@ -1240,3 +1240,43 @@ Scientific limitations remain substantial: OpenPronounce is currently blocked on
 
 **Next task:** the teacher completes 12 four-criterion ratings. Then run development-only pronunciation backend benchmarking/calibration; do not select a final backend or produce a Pronunciation x.x/5 score before those labels exist.
 
+---
+
+# PRE-HUMAN FINAL PREPARATION — COMPLETE (2026-10-31)
+
+This sprint recovered and finished the interrupted preparation work without creating human labels or learner scores. The fixed split membership was checked only to enforce development/holdout separation. No holdout media or outcome was opened, processed, or used.
+
+## Teacher workflow hardening
+
+- Direct `?mode=teacher` now exits into the focused `Teacher Rating — P2.2A` route before the Research Console constructs its sidebar. Experiment controls, VAD/cancellation controls, research navigation, transcripts, ASR confidence, timing metrics, machine evidence, and machine scores are absent from the teacher route.
+- The page exposes exactly the 12 frozen development queue IDs, raw video/audio, the four 1–5 criteria (Fluency, Pronunciation, Intelligibility, Prosody), optional pronunciation/problem-word examples, AMBER `SCORABLE / NOT_SCORABLE`, `Save & Next`, and persistent X/12 progress. Completed rows reload their saved values and are visibly marked.
+- `save_rating` now rejects non-integer/boolean/out-of-range values, preserves the prior row in edit history, writes the private rating file atomically, and creates a timestamped SHA-named snapshot under the ignored `human_ground_truth/p22a_v1/rating_backups/` directory. The UI rereads the saved row before advancing and stops visibly if verification fails.
+- Persistence and backup behavior were tested only with isolated temporary fixtures. No production rating was fabricated. Production state remains **0/12** and no production backup exists because no teacher save has occurred yet.
+- `START_TEACHER_RATING.bat` delegates to a health-checked PowerShell launcher. A real `--no-browser` smoke run started/reused the local Streamlit server successfully at `http://127.0.0.1:8501/?mode=teacher`.
+
+## Post-rating calibration gate
+
+- `RUN_CALIBRATION_AFTER_RATINGS.bat` and `speaking_evidence.post_rating` provide the one-click post-rating path. The preflight requires the exact four-criterion v2 queue, all 12 rows confirmed, AMBER decisions resolved, at least eight SCORABLE rows, no missing/malformed criterion values, at least three label levels per criterion, a human-confirmed target, prepared completeness/selected-ASR artifacts, development-only evidence, and `RAW_COMPLETED_DUET` provenance.
+- The preflight compares queue membership with the frozen 50/18 split but does not open holdout media. Any malformed row, duplicate/unexpected ID, holdout intersection, insufficient SCORABLE count, missing criterion, or insufficient variation stops without creating score artifacts.
+- An isolated complete fixture exercised the successful path: it produced five versioned criterion reports, LOO predicted-vs-human rows, MAE, within-one-band agreement, Spearman correlation, QWK when defined, distributions, and sample-size warnings. Pronunciation remained `EVIDENCE_ONLY_BACKEND_PENDING` with a null score.
+- The production launcher was run at 0/12 and correctly stopped with explicit reasons. The rating-file hash remained unchanged and `assessment_runs/T001_p22_calibrated_v01/calibration_summary.json` still does not exist.
+
+## Result and Phase 3 preparation
+
+- The read-only Phase 2 result route now forms one coherent development flow: raw learner source/audio, transcript, Fluency evidence/state, Pronunciation evidence/backend-pending state, Intelligibility evidence/state, ASR-assisted Reading Completeness, Prosody evidence/state, Overall waiting/result state, and `FEEDBACK NOT YET GENERATED`.
+- Before calibration it shows `WAITING FOR HUMAN CALIBRATION` and no fabricated numeric learner score. After a valid saved calibration summary exists, it reads criterion scores and key evidence automatically. Required labels remain `DEVELOPMENT / PRELIMINARY CALIBRATION`, `NOT CEFR`, `NOT B2`, and `NOT IELTS`.
+- `speaking_evidence.feedback_contract` plus `schemas/feedback_input_v1.schema.json` define infrastructure only for a future local adapter. The contract accepts measured development evidence and saved preliminary scores only, requires raw-Duet provenance, forbids invented pronunciation errors and proficiency/accent claims, limits future output structure, and keeps generation at `NOT_YET_GENERATED`. No LLM was installed or run and no feedback was generated.
+
+## Pronunciation and verification
+
+- OpenPronounce remains `BLOCKED_ESPEAK_NG_RUNTIME_FAILURE`. The crashing eSpeak executable was not retried. GOPT and other pronunciation backends were not added. The optional failure remains isolated from Streamlit startup, teacher rating, tests, and the other calibration criteria.
+- Targeted suites passed: post-rating/feedback **8 passed**; P2.2/P2.3 **23 passed**; focused P2.2 UI/persistence **15 passed** (overlapping subsets are reported as executed, not summed).
+- Full normal suite: **73 passed, 3 skipped**. Python compilation passed for `app.py`, `duet_segmenter`, `duet_speech_lab`, `speaking_evidence`, and `scripts`. Streamlit AppTest covered both direct teacher and waiting-result routes; the launcher health smoke passed.
+- `git diff --check` passed apart from informational Windows line-ending notices. Private media, WAVs, ratings, local artifacts, caches, secrets, and models remain ignored.
+
+**Competition readiness:** remains **54/100**. Preparation infrastructure does not count as completed human ground truth or a real calibrated scorer.
+
+**Current blocker:** the external teacher must complete the 12 four-criterion ratings.
+
+**Next action:** after the real queue reaches 12/12, double-click `RUN_CALIBRATION_AFTER_RATINGS.bat`, inspect the development-only reports and first preliminary results, and do not use the holdout or force a Pronunciation score.
+

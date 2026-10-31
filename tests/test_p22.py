@@ -96,7 +96,31 @@ def test_rating_save_does_not_modify_raw_evidence(tmp_path):
     assert restarted_item["human_confirmed"] is True
     assert (restarted_item["fluency"], restarted_item["pronunciation"],
             restarted_item["intelligibility"], restarted_item["prosody"]) == (2, 4, 3, 4)
+    backups = list((tmp_path / "rating_backups").glob("ratings_*.json"))
+    assert len(backups) == 1
+    assert json.loads(backups[0].read_text(encoding="utf-8"))["items"][0] == restarted_item
     assert hashlib.sha256(raw.read_bytes()).hexdigest() == digest
+
+
+def test_rating_persists_after_simulated_app_restart_and_rejects_boolean_scores(tmp_path):
+    path = tmp_path / "ratings_v2.json"
+    item = {"pair_id": "T001-D005", "quality_gate": "GREEN",
+            "amber_scorability": "NOT_REQUIRED", "fluency": None,
+            "pronunciation": None, "intelligibility": None, "prosody": None,
+            "note": "", "human_confirmed": False}
+    path.write_text(json.dumps({"items": [item]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="integers"):
+        save_rating(path, "T001-D005", "SCORABLE",
+                    {"fluency": True, "pronunciation": 3,
+                     "intelligibility": 3, "prosody": 3}, "", True)
+    save_rating(path, "T001-D005", "SCORABLE",
+                {"fluency": 2, "pronunciation": 3,
+                 "intelligibility": 4, "prosody": 5}, "", True)
+    # A new disk read is the same operation the Streamlit app performs after restart.
+    restarted = json.loads(Path(str(path)).read_text(encoding="utf-8"))["items"][0]
+    assert restarted["human_confirmed"] is True
+    assert [restarted[name] for name in ("fluency", "pronunciation", "intelligibility", "prosody")] == [2, 3, 4, 5]
+    assert len(list((tmp_path / "rating_backups").glob("ratings_v2_*.json"))) == 1
 
 
 def test_completeness_is_transparent_and_warns_about_asr():
@@ -196,6 +220,11 @@ def test_phase2_result_ui_shows_waiting_without_numeric_score():
     assert not app.exception
     messages = [element.value for element in app.error]
     assert "WAITING FOR HUMAN CALIBRATION" in messages
+    rendered = " ".join(str(element.value) for group in
+                        (app.title, app.caption, app.markdown, app.info, app.warning, app.error)
+                        for element in group)
+    assert "PRONUNCIATION EVIDENCE PENDING" in rendered
+    assert "FEEDBACK NOT YET GENERATED" in rendered
     assert not Path("assessment_runs/T001_p22_calibrated_v01/calibration_summary.json").exists()
 
 
@@ -215,3 +244,12 @@ def test_teacher_rating_page_is_focused_and_machine_score_blind():
                ("machine score", "asr confidence", "openpronounce", "wpm", "pause statistics", "gopt"))
     labels = {selectbox.label for selectbox in app.selectbox}
     assert {"Fluency 1–5", "Pronunciation 1–5", "Intelligibility 1–5", "Prosody 1–5"} <= labels
+    assert "VAD threshold" not in labels
+    video = app.selectbox(key="teacher_rating_pair")
+    assert len(video.options) == 12
+    assert any(field.label.startswith("Pronunciation examples") for field in app.text_input)
+    assert not any(field.label.startswith("Ghi chú ngắn") for field in app.text_input)
+    video.set_value("T001-D009").run()
+    assert not app.exception
+    assert app.selectbox(key="teacher_scorability_T001-D009").label == "SCORABLE / NOT SCORABLE"
+    assert app.button(key="teacher_save_T001-D009").disabled is True

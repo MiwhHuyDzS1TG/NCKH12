@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nckh12.local/schemas/feedback_input_v1.schema.json",
+  "title": "NCKH12 Phase 3 measured-evidence feedback input",
+  "type": "object",
+  "required": [
+    "version",
+    "pair_id",
+    "status",
+    "canonical_audio_source",
+    "criteria",
+    "generation",
+    "safety_rules",
+    "labels",
+    "holdout_processed"
+  ],
+  "properties": {
+    "version": {"const": "feedback-input-contract-v1"},
+    "pair_id": {"type": "string", "pattern": "^T001-D[0-9]{3}$"},
+    "status": {
+      "enum": ["WAITING_FOR_HUMAN_CALIBRATION", "READY_FOR_FUTURE_FEEDBACK_ADAPTER"]
+    },
+    "canonical_audio_source": {"const": "RAW_COMPLETED_DUET"},
+    "criteria": {
+      "type": "object",
+      "required": ["fluency", "pronunciation", "intelligibility", "completeness", "prosody"],
+      "additionalProperties": false,
+      "properties": {
+        "fluency": {"$ref": "#/$defs/criterion"},
+        "pronunciation": {"$ref": "#/$defs/criterion"},
+        "intelligibility": {"$ref": "#/$defs/criterion"},
+        "completeness": {"$ref": "#/$defs/criterion"},
+        "prosody": {"$ref": "#/$defs/criterion"}
+      }
+    },
+    "generation": {
+      "type": "object",
+      "required": ["status", "strengths", "priority_improvement", "next_practice_action"],
+      "properties": {
+        "status": {"const": "NOT_YET_GENERATED"},
+        "strengths": {"type": "array", "maxItems": 0},
+        "priority_improvement": {"type": "null"},
+        "next_practice_action": {"type": "null"}
+      },
+      "additionalProperties": false
+    },
+    "safety_rules": {"type": "array", "minItems": 5, "items": {"type": "string"}},
+    "labels": {
+      "const": ["DEVELOPMENT / PRELIMINARY CALIBRATION", "NOT CEFR", "NOT B2", "NOT IELTS"]
+    },
+    "holdout_processed": {"const": false}
+  },
+  "$defs": {
+    "criterion": {
+      "type": "object",
+      "required": ["score", "status", "evidence"],
+      "properties": {
+        "score": {"type": ["number", "null"], "minimum": 1, "maximum": 5},
+        "status": {"type": "string"},
+        "coverage": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "evidence": {"type": "object"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

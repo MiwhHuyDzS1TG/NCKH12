@@ -951,6 +951,8 @@ def _teacher_rating_dashboard() -> None:
     items = payload["items"]
     completed = [item for item in items if item.get("human_confirmed")]
     st.progress(len(completed) / len(items), text=f"Tiến độ: {len(completed)} / {len(items)}")
+    if st.session_state.get("teacher_last_saved"):
+        st.success(f"Đã lưu an toàn {st.session_state.pop('teacher_last_saved')} và chuyển sang video tiếp theo.")
     st.caption("Chấm phần học sinh nói. 1 = rất yếu, 3 = trung bình, 5 = rất tốt. Không chấm ngữ pháp hay từ vựng.")
     with st.expander("Hướng dẫn 4 tiêu chí", expanded=True):
         st.markdown("""
@@ -977,9 +979,13 @@ Nghe nhịp câu, chia cụm ý, sentence stress và ngữ điệu. Không chấ
         st.session_state["teacher_rating_index"] = first_pending
     selected_id = st.selectbox("Video", pair_ids,
                                index=min(st.session_state["teacher_rating_index"], len(items) - 1),
+                               format_func=lambda value: f"{value}  ✓" if next(
+                                   row for row in items if row["pair_id"] == value).get("human_confirmed") else value,
                                key="teacher_rating_pair")
     index = pair_ids.index(selected_id)
     item = items[index]
+    if item.get("human_confirmed"):
+        st.info("Video này đã được lưu. Nếu chấm lại, bản cũ vẫn được giữ trong lịch sử và bản sao lưu.")
     raw_path = evidence / "pairs" / selected_id / "raw_evidence.json"
     raw = json.loads(raw_path.read_text(encoding="utf-8"))
     st.video(raw["raw_duet_path"])
@@ -1012,17 +1018,22 @@ Nghe nhịp câu, chia cụm ý, sentence stress và ngữ điệu. Không chấ
     pronunciation_examples = st.text_input("Pronunciation examples / problematic words (không bắt buộc)",
                                            value=item.get("pronunciation_examples", ""),
                                            key=f"teacher_pronunciation_examples_{selected_id}")
-    note = st.text_input("Ghi chú ngắn (không bắt buộc)", value=item.get("note", ""),
-                         key=f"teacher_note_{selected_id}")
+    note = item.get("note", "")
     scores_ready = scorability == "NOT_SCORABLE" or all(name in scores for name in ("fluency", "pronunciation", "intelligibility", "prosody"))
     save_disabled = scorability is None or not scores_ready
     if st.button("Save & Next", type="primary", disabled=save_disabled, key=f"teacher_save_{selected_id}"):
-        save_rating(ratings_path, selected_id, scorability, scores, note, True,
-                    pronunciation_examples=pronunciation_examples)
+        saved = save_rating(ratings_path, selected_id, scorability, scores, note, True,
+                            pronunciation_examples=pronunciation_examples)
+        persisted = next(row for row in json.loads(ratings_path.read_text(encoding="utf-8"))["items"]
+                         if row["pair_id"] == selected_id)
+        if persisted != saved:
+            st.error("Không thể xác minh bản lưu. Hãy dừng chấm và báo người nghiên cứu.")
+            st.stop()
         refreshed = json.loads(ratings_path.read_text(encoding="utf-8"))["items"]
         next_pending = next((i for i, row in enumerate(refreshed) if not row.get("human_confirmed")),
                             min(index + 1, len(items) - 1))
         st.session_state["teacher_rating_index"] = next_pending
+        st.session_state["teacher_last_saved"] = selected_id
         st.session_state.pop("teacher_rating_pair", None)
         st.rerun()
     if len(completed) == len(items):
@@ -1045,58 +1056,88 @@ def _phase2_assessment_result_dashboard() -> None:
         return
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
     turn = evidence["turns"][0]
+    raw_path = evidence_root / "pairs" / pair_id / "raw_evidence.json"
+    if raw_path.is_file():
+        raw = json.loads(raw_path.read_text(encoding="utf-8"))
+        st.subheader("Learner speech source")
+        st.video(raw["raw_duet_path"])
+        st.audio(str(evidence_root / raw["model_input_ref"]))
+        st.caption("Assessment source: RAW_COMPLETED_DUET, cropped/masked by Phase 1 learner timestamps.")
     st.subheader("Transcript")
     st.write(turn["transcript"]["verbatim_transcript"])
-    st.subheader("Fluency evidence")
-    st.json(evidence["aggregate_fluency_evidence"])
-    st.subheader("Intelligibility evidence")
     probabilities = [word.get("probability") for word in turn["transcript"].get("words", [])
                      if word.get("probability") is not None]
-    st.json({"mean_word_probability": sum(probabilities) / len(probabilities) if probabilities else None,
-             "word_count_with_probability": len(probabilities),
-             "note": "Recognition evidence only; an ASR mismatch is not a pronunciation error."})
-    st.subheader("Pronunciation")
     pronunciation_path = evidence_root / "pairs" / pair_id / "pronunciation_asr_baseline_v1.json"
-    if pronunciation_path.is_file():
-        pronunciation = json.loads(pronunciation_path.read_text(encoding="utf-8"))
-        st.info("PRONUNCIATION EVIDENCE ONLY · WAITING FOR HUMAN CALIBRATION")
-        st.json({"status": pronunciation["status"],
-                 "backend_role": pronunciation["backend"]["role"],
-                 "valid_analyzed_word_count": pronunciation["utterance"]["valid_analyzed_word_count"],
-                 "analyzed_coverage": pronunciation["utterance"]["analyzed_coverage"],
-                 "final_consonant_evidence": pronunciation["diagnostics"]["final_consonant_evidence"],
-                 "human_calibrated_score": None,
-                 "limitations": pronunciation["limitations"]})
-    else:
-        st.error("WAITING FOR HUMAN CALIBRATION")
-    st.subheader("ASR-assisted Reading Completeness")
+    pronunciation = (json.loads(pronunciation_path.read_text(encoding="utf-8"))
+                     if pronunciation_path.is_file() else None)
     completeness_path = evidence_root / "pairs" / pair_id / "reading_completeness_v1.json"
-    if completeness_path.is_file():
-        completeness = json.loads(completeness_path.read_text(encoding="utf-8"))
-        st.json({key: completeness.get(key) for key in
-                 ("coverage", "matched_sequence", "omissions", "insertions", "transcript_source", "warning")})
-    else:
-        st.info("WAITING FOR TARGET CONFIRMATION OR COMPLETENESS PREPARATION")
-    st.subheader("Prosody evidence")
-    st.json(turn["acoustic"])
+    completeness = (json.loads(completeness_path.read_text(encoding="utf-8"))
+                    if completeness_path.is_file() else None)
 
     summary_path = evidence_root / "calibration_summary.json"
-    if not summary_path.is_file():
-        completed = 0
-        if ratings_path.is_file():
-            ratings = json.loads(ratings_path.read_text(encoding="utf-8"))["items"]
-            completed = sum(item.get("human_confirmed") is True for item in ratings)
+    summary = json.loads(summary_path.read_text(encoding="utf-8")) if summary_path.is_file() else None
+    score = next((item for item in summary.get("scores", []) if item["pair_id"] == pair_id), None) if summary else None
+    completed = 0
+    if ratings_path.is_file():
+        ratings = json.loads(ratings_path.read_text(encoding="utf-8"))["items"]
+        completed = sum(item.get("human_confirmed") is True for item in ratings)
+
+    st.subheader("Criterion assessment state")
+    criterion_rows = [
+        ("Fluency", score.get("fluency") if score else None,
+         "DEVELOPMENT PRELIMINARY · SMALL SAMPLE" if score and score.get("fluency") is not None else "WAITING FOR HUMAN CALIBRATION",
+         {key: evidence["aggregate_fluency_evidence"].get(key) for key in
+          ("pause_ratio", "long_pause_count", "longest_pause_sec", "mean_length_of_run_words", "speech_rate_wpm")},
+         "Timing evidence is ASR/Phase-1 dependent."),
+        ("Pronunciation", score.get("pronunciation") if score else None,
+         "PRONUNCIATION EVIDENCE PENDING · BACKEND PENDING",
+         {"status": pronunciation.get("status") if pronunciation else "EVIDENCE_PENDING",
+          "analyzed_coverage": pronunciation.get("utterance", {}).get("analyzed_coverage") if pronunciation else None},
+         "ASR recognition is not a true pronunciation diagnosis; no proxy score is forced."),
+        ("Intelligibility", score.get("intelligibility") if score else None,
+         "DEVELOPMENT PRELIMINARY · SMALL SAMPLE" if score and score.get("intelligibility") is not None else "WAITING FOR HUMAN CALIBRATION",
+         {"mean_word_probability": sum(probabilities) / len(probabilities) if probabilities else None,
+          "recognized_word_count": len(probabilities)},
+         "ASR mismatch is not automatically a learner error."),
+        ("Completeness", score.get("completeness") if score else None,
+         "ASR-ASSISTED EVIDENCE READY" if completeness else "EVIDENCE PENDING",
+         {"coverage": completeness.get("coverage") if completeness else None,
+          "matched_words": len(completeness.get("matched_sequence", [])) if completeness else None,
+          "omissions": len(completeness.get("omissions", [])) if completeness else None,
+          "insertions": len(completeness.get("insertions", [])) if completeness else None},
+         completeness.get("warning") if completeness else "Target/alignment evidence is not ready."),
+        ("Prosody", score.get("prosody") if score else None,
+         "DEVELOPMENT PRELIMINARY · SEPARATE" if score and score.get("prosody") is not None else "WAITING FOR HUMAN CALIBRATION",
+         {key: turn["acoustic"].get(key) for key in
+          ("f0_range_semitones", "f0_std_semitones", "intensity_std_db", "voiced_fraction")},
+         "Prosody remains separate from Overall until independently reviewed."),
+    ]
+    for name, value, status, key_evidence, warning in criterion_rows:
+        with st.container(border=True):
+            st.markdown(f"**{name}**")
+            st.write(f"Score/status: {value:.2f} / 5" if isinstance(value, (int, float)) else f"Score/status: {status}")
+            st.caption(f"Confidence/status: {status}")
+            st.json(key_evidence)
+            st.caption(f"Warning: {warning}")
+    if score and score.get("overall_controlled_reading_score") is not None:
+        st.metric("Overall Controlled-Reading Score", f"{score['overall_controlled_reading_score']:.2f} / 5")
+        st.caption("Transparent mean of validated/preliminary Fluency, Intelligibility, and Completeness only.")
+    else:
         st.error("WAITING FOR HUMAN CALIBRATION")
         st.caption(f"Human ratings: {completed}/12. Không có numeric score giả.")
-        return
-    summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    score = next((item for item in summary.get("scores", []) if item["pair_id"] == pair_id), None)
-    if not score:
-        st.error("WAITING FOR HUMAN CALIBRATION")
-    else:
-        st.subheader("Score / status")
-        st.json(score)
+    st.subheader("Future feedback")
+    st.info("FEEDBACK NOT YET GENERATED")
+    st.caption("The Phase 3 input contract is ready, but no learner advice is generated before calibrated evidence is reviewed.")
 
+
+direct_mode = st.query_params.get("mode")
+if direct_mode == "teacher":
+    st.markdown("<style>section[data-testid='stSidebar']{display:none}</style>", unsafe_allow_html=True)
+    _teacher_rating_dashboard()
+    st.stop()
+if direct_mode == "p22result":
+    _phase2_assessment_result_dashboard()
+    st.stop()
 
 current_config = _sidebar_config()
 if st.query_params.get("mode") == "p21b" and "lab_workspace_mode" not in st.session_state:

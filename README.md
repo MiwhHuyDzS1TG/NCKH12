@@ -2,7 +2,7 @@
 
 Local research proof of concept for Grade 10 EFL controlled-reading practice. The system aligns a known TikTok template with a completed Duet, locates learner speech, extracts evidence from the original Duet audio, and prepares development-only speaking assessment calibration.
 
-> **Current status (2026-10-30): functional research prototype, 53/100 competition-ready.** Phase 1 extraction and Phase 2 evidence generation work. The T001 target text, six human ASR references, true small.en/medium.en WER comparison, and selected-backend evidence are complete. The 12-video human speaking-rating queue is still empty, so calibrated criterion scores, learner feedback, and a competition result demo do not yet exist.
+> **Current status (2026-10-31): functional research prototype, 54/100 competition-ready.** Phase 1 extraction and Phase 2 evidence generation work. The target text, six human ASR references, measured ASR selection, four-criterion teacher workflow, strict post-rating preflight, and waiting/result states are ready. The 12-video human speaking-rating queue is still empty, so calibrated scores and learner feedback do not yet exist.
 
 This project does **not** claim CEFR, B2, or IELTS validity. Current outputs are development research evidence, not official proficiency results.
 
@@ -17,12 +17,12 @@ Known T001 template + completed student Duet
   → faster-whisper transcript + timing/acoustic evidence
   → human reference/rating workflow
   → preliminary controlled-reading calibration (pending ratings)
-  → result explanation and feedback (not implemented yet)
+  → evidence-grounded formative feedback (contract ready; generation planned)
 ```
 
 Cancellation residuals are detection-only. Speaking evidence is always derived from the original completed Duet audio using saved timestamps.
 
-## What currently works
+## DONE
 
 - Phase 1 cohort pipeline: normalization, visual/audio alignment, reference audibility, cancellation selection, VAD, timestamps, diagnostics, and engineering quality gates.
 - Fixed 50-development / 18-holdout split; the holdout remains excluded from tuning and Phase 2 work.
@@ -32,15 +32,26 @@ Cancellation residuals are detection-only. Speaking evidence is always derived f
 - Six human verbatim ASR references. Measured micro-WER: small.en `5.51%`, medium.en `7.83%`; small.en is selected and is faster on this sample.
 - Versioned 12-video P2.2A rating workflow: 9 GREEN plus 3 low-risk AMBER cases, with AMBER scorability review first.
 - Deterministic calibration code and completeness alignment code, gated until enough human ratings exist.
+- Four-criterion teacher page with atomic saves, private version snapshots, edit history, restart persistence, and visible 12/12 progress.
+- Strict one-click post-rating preflight/calibration launcher; it refuses incomplete, invalid, non-development, or low-variation labels.
+- Read-only Phase 2 result page with a coherent evidence → completeness → criterion state → future feedback flow.
+- Measured-evidence-only Phase 3 feedback input contract; it generates no learner advice yet.
 - Local Streamlit research interface and automated tests.
 
-## Not complete yet
+## IN PROGRESS
 
-- Human Fluency, Intelligibility, and Prosody ratings: `0/12` submitted.
+- Human Fluency, Pronunciation, Intelligibility, and Prosody ratings: `0/12` submitted.
 - Development-calibrated 1–5 criterion scores and Overall Controlled-Reading Score.
-- Pronunciation-specific engine or validated pronunciation evidence.
+- Pronunciation remains evidence-only/backend-pending; OpenPronounce is blocked and cannot break the core workflow.
 - Learner-friendly feedback tied to measured evidence.
-- Stable end-to-end competition result screen, export, and presentation package.
+- Competition export and presentation package.
+
+## PLANNED
+
+- Run development calibration only after the teacher completes 12/12 and all strict gates pass.
+- Review and freeze the first real preliminary mappings and result examples.
+- Generate a few evidence-grounded formative suggestions through the prepared contract.
+- Harden the competition demo and presentation package.
 - One-time final evaluation on the untouched holdout.
 
 ## Installation
@@ -62,6 +73,8 @@ streamlit run app.py
 Open these local pages:
 
 - Research console: `http://127.0.0.1:8501/`
+- Teacher rating: double-click `START_TEACHER_RATING.bat`
+- Read-only Phase 2 result: `http://127.0.0.1:8501/?mode=p22result`
 - P2.2A human workflow: `http://127.0.0.1:8501/?mode=p22a`
 
 The local console binds to `127.0.0.1`; it is not a cloud deployment.
@@ -205,12 +218,16 @@ Open `http://127.0.0.1:8501/?mode=p22a` after starting `streamlit run app.py`. T
 
 1. Confirm the single T001 target text proposed independently by small.en and medium.en from the template audio.
 2. Listen to six development-only learner clips and correct the verbatim ASR transcript without repairing grammar or repetitions.
-3. Rate twelve development videos for Fluency, Intelligibility, and Prosody on the displayed 1–5 rubric. The three low-risk AMBER items require a separate SCORABLE/NOT_SCORABLE decision first.
+3. Rate twelve development videos for Fluency, Pronunciation, Intelligibility, and Prosody on the displayed 1–5 rubric. The three low-risk AMBER items require a separate SCORABLE/NOT_SCORABLE decision first.
 4. After enough labels exist, compare small.en and medium.en against human transcripts, generate selected-backend evidence, and run deterministic development-only calibration.
 
 Candidate target provenance is in `task_profiles/T001_target_text_v1.json`; human labels are under `human_ground_truth/p22a_v1/`; model mappings are written to `calibration/p22a_v01/`; derived evidence and any preliminary scores go to `assessment_runs/T001_p22_calibrated_v01/`. P2.1 and P2.1b remain unchanged. Completeness stores the matched word sequence, omissions, insertions, and coverage, while warning that ASR differences are not proven reading errors. Any score output is labeled **DEVELOPMENT / PRELIMINARY CALIBRATION**, **NOT CEFR**, **NOT B2**, and **NOT IELTS**.
 
-For tonight's focused teacher workflow, double-click `START_TEACHER_RATING.bat` or open `http://127.0.0.1:8501/?mode=teacher`. The dedicated page hides all machine scores, saves each rating immediately, and advances with **Save & Next**. The separate evidence/result page is `http://127.0.0.1:8501/?mode=p22result`; it displays **WAITING FOR HUMAN CALIBRATION** and no numeric score until the minimum label-count and label-variation gates pass.
+For the focused teacher workflow, double-click `START_TEACHER_RATING.bat` or open `http://127.0.0.1:8501/?mode=teacher`. The dedicated route hides technical controls and all machine scores. **Save & Next** atomically writes the private rating file, verifies the saved row, retains edit history, creates a private version snapshot, and advances. The separate result page is `http://127.0.0.1:8501/?mode=p22result`; it shows completeness evidence plus clear waiting/backend/feedback states and no numeric score before valid calibration.
+
+After the teacher reaches 12/12, double-click `RUN_CALIBRATION_AFTER_RATINGS.bat`. It first checks exact queue membership, fixed development/holdout separation, all four required ratings, AMBER scorability, SCORABLE count, label distributions, confirmed target, selected evidence, and raw-Duet provenance. A failed check stops without creating scores and prints the reason. A successful check runs the existing small interpretable development-only mappings and opens the result page. Pronunciation stays `EVIDENCE_ONLY / BACKEND_PENDING` unless a defensible pronunciation backend exists; teacher labels alone never force a proxy model.
+
+The future feedback adapter contract is `speaking_evidence/feedback_contract.py`. It accepts only measured development evidence and saved preliminary calibration output, carries the required non-proficiency labels, forbids invented pronunciation errors/accent shaming, and leaves feedback generation explicitly `NOT_YET_GENERATED`.
 
 ## P2.3 pronunciation track preparation
 

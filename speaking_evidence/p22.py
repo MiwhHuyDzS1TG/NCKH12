@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import math
+import os
 import re
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import mean, median
@@ -20,6 +23,7 @@ from speaking_evidence.wer import word_error_counts, words_for_wer
 
 VERSION = "P2.2A-v0.1"
 PREP_VERSION = "P2.2B-PREP-v0.1"
+CALIBRATION_REPORT_VERSION = "P2.2C-development-calibration-v0.1"
 ASR_AUDIT_IDS = ("T001-D028", "T001-D015", "T001-D068", "T001-D007", "T001-D059", "T001-D005")
 GREEN_IDS = ("T001-D005", "T001-D007", "T001-D015", "T001-D028", "T001-D039",
              "T001-D041", "T001-D046", "T001-D059", "T001-D068")
@@ -284,7 +288,7 @@ def save_rating(path: Path, pair_id: str, scorability: str, scores: dict, note: 
         raise ValueError("AMBER requires a human scorability decision")
     if scorability == "NOT_SCORABLE":
         scores = {name: None for name in LABELS}
-    elif any(not isinstance(scores.get(name), int) or not 1 <= scores[name] <= 5 for name in LABELS):
+    elif any(type(scores.get(name)) is not int or not 1 <= scores[name] <= 5 for name in LABELS):
         raise ValueError("All four ratings must be integers from 1 to 5")
     if item.get("human_confirmed") is True:
         payload.setdefault("history", []).append({"pair_id": pair_id,
@@ -294,8 +298,31 @@ def save_rating(path: Path, pair_id: str, scorability: str, scores: dict, note: 
                  "note": note, "pronunciation_examples": pronunciation_examples,
                  "rater_metadata": rater_metadata if rater_metadata is not None else item.get("rater_metadata"),
                  "human_confirmed": True, "rated_at_utc": now_utc()})
-    write_json(path, payload)
+    _write_rating_atomically_with_snapshot(path, payload)
     return item
+
+
+def _write_rating_atomically_with_snapshot(path: Path, payload: dict) -> Path:
+    """Commit one human-rating update atomically and retain a private snapshot.
+
+    Rating artifacts live in the ignored human-ground-truth directory.  The
+    snapshot is intentionally colocated there so it cannot be published by an
+    ordinary Git commit.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    serialized = json.dumps(payload, ensure_ascii=False, indent=2,
+                            allow_nan=False) + "\n"
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    temporary.write_text(serialized, encoding="utf-8")
+    os.replace(temporary, path)
+
+    digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    snapshot_dir = path.parent / "rating_backups"
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    snapshot = snapshot_dir / f"{path.stem}_{timestamp}_{digest[:12]}.json"
+    snapshot.write_text(serialized, encoding="utf-8")
+    return snapshot
 
 
 def align_completeness(target_text: str, learner_text: str, transcript_source: str) -> dict:
@@ -370,6 +397,20 @@ def _spearman(x: np.ndarray, y: np.ndarray) -> float | None:
     return float(np.corrcoef(rx, ry)[0, 1])
 
 
+def _quadratic_weighted_kappa(human: np.ndarray, predicted: np.ndarray) -> float | None:
+    """QWK on rounded 1-5 predictions; undefined cases remain explicit."""
+    if len(human) < 3 or len(set(human.tolist())) < 2:
+        return None
+    observed = np.zeros((5, 5), dtype=float)
+    rounded = np.clip(np.rint(predicted), 1, 5).astype(int)
+    for left, right in zip(human.astype(int), rounded):
+        observed[left - 1, right - 1] += 1
+    expected = np.outer(observed.sum(axis=1), observed.sum(axis=0)) / max(1, observed.sum())
+    weights = np.fromfunction(lambda i, j: ((i - j) ** 2) / 16, (5, 5))
+    denominator = float((weights * expected).sum())
+    return None if denominator <= 0 else float(1 - (weights * observed).sum() / denominator)
+
+
 def calibration_readiness(ratings: list[dict]) -> dict:
     """Check the pre-declared gate without inspecting machine/label correlations."""
     unexpected = sorted({row.get("pair_id") for row in ratings} - set(RATING_IDS))
@@ -378,7 +419,7 @@ def calibration_readiness(ratings: list[dict]) -> dict:
     usable = [row for row in ratings
               if row.get("human_confirmed") is True and row.get("amber_scorability") != "NOT_SCORABLE"]
     variation = {
-        label: sorted({row.get(label) for row in usable if isinstance(row.get(label), int)})
+        label: sorted({row.get(label) for row in usable if type(row.get(label)) is int})
         for label in LABELS
     }
     reasons = []
@@ -533,8 +574,11 @@ def fit_ridge_mapping(rows: list[dict], label: str, feature_names: tuple[str, ..
             "loo_mae": float(np.mean(absolute_errors)),
             "within_one_band_agreement": float(np.mean(absolute_errors <= 1.0)),
             "spearman_correlation": _spearman(np.asarray(loo), y),
+            "quadratic_weighted_kappa": _quadratic_weighted_kappa(y, np.asarray(loo)),
             "predicted_vs_human": predicted_vs_human,
-            "loo_predictions": [round(v, 4) for v in loo], "uncertainty": "very small development sample"}
+            "loo_predictions": [round(v, 4) for v in loo],
+            "uncertainty": "very small development-only sample; no holdout fitting",
+            "labels": DISCLAIMER}
 
 
 def apply_mapping(mapping: dict, features: dict) -> float | None:
@@ -627,11 +671,29 @@ def calibrate(ground_truth_dir: Path, evidence_dir: Path, target_path: Path,
                 "overall_formula": "unweighted mean of three validated/preliminary criterion mappings" if overall_ready else None,
                 "overall_status": "DEVELOPMENT_PRELIMINARY" if overall_ready else "UNAVAILABLE_INSUFFICIENT_MAPPING"}
         scores.append(item)
-    result = {"version": VERSION, "status": "DEVELOPMENT_PRELIMINARY_CALIBRATION_READY",
+    result = {"version": CALIBRATION_REPORT_VERSION,
+              "status": "DEVELOPMENT_PRELIMINARY_CALIBRATION_READY",
               "scope": "DEVELOPMENT_ONLY", "n_human_rated": len(rows),
               "mappings": mappings, "completeness_evidence": completeness,
               "scores": scores, "holdout_processed": False, "labels": DISCLAIMER,
               "overall_note": "Overall is emitted only when Fluency, Intelligibility, and Completeness mappings are all available; Prosody remains separate"}
+    report_dir = calibration_dir / "criterion_reports_v01"
+    for criterion, mapping in mappings.items():
+        report = {
+            "version": CALIBRATION_REPORT_VERSION,
+            "criterion": criterion,
+            "scope": "DEVELOPMENT_ONLY",
+            "status": mapping.get("status"),
+            "mapping": mapping,
+            "label_distribution": mapping.get("label_distribution"),
+            "sample_size_warning": (
+                "Very small development-only sample; results are preliminary and were not fit on holdout."
+            ),
+            "holdout_processed": False,
+            "labels": DISCLAIMER,
+        }
+        write_json(report_dir / f"{criterion}_calibration_report_v01.json", report)
     write_json(calibration_dir / "criterion_mappings_v01.json", mappings)
+    write_json(output_dir / "calibration_summary_v01.json", result)
     write_json(output_dir / "calibration_summary.json", result)
     return result
