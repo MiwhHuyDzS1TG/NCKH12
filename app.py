@@ -1040,6 +1040,143 @@ Nghe nhịp câu, chia cụm ý, sentence stress và ngữ điệu. Không chấ
         st.success("Đã lưu đủ 12/12. Dữ liệu vẫn còn sau khi tắt/mở lại app.")
 
 
+def _teacher_validation_dashboard() -> None:
+    """Machine-blind five-video workflow for frozen P2.4 validation only."""
+    from speaking_evidence.p24_validation import (
+        VALIDATION_IDS,
+        default_artifact_path,
+        initialize_validation_rating_artifact,
+        rating_progress,
+        save_validation_rating,
+    )
+
+    evidence_root = ROOT / "assessment_runs/T001_p24_tournament_v1"
+    ratings_path = default_artifact_path(ROOT)
+    st.title("Teacher Rating — P2.4 Development Validation")
+    try:
+        payload = initialize_validation_rating_artifact(ROOT, ratings_path)
+    except (OSError, ValueError, KeyError) as exc:
+        st.error(f"Không thể mở hàng chờ validation an toàn: {exc}")
+        return
+
+    completed_count, total = rating_progress(payload)
+    st.progress(completed_count / total, text=f"Development Validation: {completed_count} / {total}")
+    st.caption(f"Development Validation: {completed_count} / {total}")
+    if st.session_state.get("teacher_validation_last_saved"):
+        saved_id = st.session_state.pop("teacher_validation_last_saved")
+        st.success(f"Đã lưu an toàn {saved_id} và chuyển sang video tiếp theo.")
+    st.caption(
+        "Chỉ chấm phần học sinh nói. Không có điểm máy, dự đoán hay kết quả P2.4 "
+        "được hiển thị trên trang này."
+    )
+    with st.expander("Hướng dẫn 4 tiêu chí", expanded=True):
+        st.markdown("""
+**Fluency — How smoothly and continuously does the learner speak?**
+
+Nghe khoảng dừng, ngập ngừng, lặp/sửa và độ liền mạch. Không chấm phát âm ở đây.
+
+**Pronunciation — How accurately and clearly are the English words and sounds produced?**
+
+Nghe phụ âm/nguyên âm, âm cuối, âm bị bỏ/sai, cách đọc từ và word stress. Không trừ điểm chỉ vì giọng Việt.
+
+**Intelligibility — How easy is the learner to understand without looking at the transcript?**
+
+1 = rất khó hiểu; 3 = phần lớn hiểu được; 5 = rất rõ và dễ hiểu.
+
+**Prosody — How appropriate are the rhythm, phrasing, stress and intonation?**
+
+Nghe nhịp câu, chia cụm ý, sentence stress và ngữ điệu. Không chấm trùng Fluency.
+
+Thang chung: 1 = rất yếu, 3 = trung bình, 5 = rất tốt. Không chấm ngữ pháp hay từ vựng.
+""")
+
+    items = payload["items"]
+    pair_ids = [item["pair_id"] for item in items]
+    if tuple(pair_ids) != VALIDATION_IDS:
+        st.error("Hàng chờ validation không khớp 5 video đã đóng băng.")
+        return
+    first_pending = next((index for index, item in enumerate(items)
+                          if not item.get("human_confirmed")), 0)
+    if "teacher_validation_index" not in st.session_state:
+        st.session_state["teacher_validation_index"] = first_pending
+    selected_id = st.selectbox(
+        "Video", pair_ids,
+        index=min(st.session_state["teacher_validation_index"], total - 1),
+        format_func=lambda value: f"{value}  ✓" if next(
+            row for row in items if row["pair_id"] == value).get("human_confirmed") else value,
+        key="teacher_validation_pair",
+    )
+    index = pair_ids.index(selected_id)
+    item = items[index]
+    if item.get("human_confirmed"):
+        st.info("Video này đã lưu. Nếu chấm lại, bản cũ vẫn được giữ trong lịch sử và backup.")
+
+    st.video(item["raw_duet_path"])
+    st.audio(str(evidence_root / item["model_input_ref"]))
+    st.caption("Nguồn nghe: RAW_CROPPED — Duet gốc được crop/mask theo mốc người học của Phase 1.")
+
+    if item["requires_teacher_scorability_confirmation"]:
+        choices = [None, "SCORABLE", "NOT_SCORABLE"]
+        existing_scorability = item.get("amber_scorability")
+        scorability = st.selectbox(
+            "SCORABLE / NOT SCORABLE", choices,
+            index=choices.index(existing_scorability) if existing_scorability in choices else 0,
+            format_func=lambda value: "— Chọn —" if value is None else value,
+            key=f"teacher_validation_scorability_{selected_id}",
+        )
+    else:
+        scorability = "SCORABLE"
+    scores: dict[str, int] = {}
+    if scorability != "NOT_SCORABLE":
+        for name, label in (("fluency", "Fluency 1–5"),
+                            ("pronunciation", "Pronunciation 1–5"),
+                            ("intelligibility", "Intelligibility 1–5"),
+                            ("prosody", "Prosody 1–5")):
+            options = [None, 1, 2, 3, 4, 5]
+            existing_score = item.get(name)
+            value = st.selectbox(
+                label, options,
+                index=options.index(existing_score) if existing_score in options else 0,
+                format_func=lambda score: "— Chọn điểm —" if score is None else str(score),
+                key=f"teacher_validation_{name}_{selected_id}",
+            )
+            if isinstance(value, int):
+                scores[name] = value
+    pronunciation_examples = st.text_input(
+        "Pronunciation examples / problematic words (không bắt buộc)",
+        value=item.get("pronunciation_examples", ""),
+        key=f"teacher_validation_pronunciation_examples_{selected_id}",
+    )
+    scores_ready = scorability == "NOT_SCORABLE" or all(
+        name in scores for name in ("fluency", "pronunciation", "intelligibility", "prosody")
+    )
+    if st.button("Save & Next", type="primary",
+                 disabled=scorability is None or not scores_ready,
+                 key=f"teacher_validation_save_{selected_id}"):
+        saved = save_validation_rating(
+            ratings_path, ROOT, selected_id, scorability, scores,
+            pronunciation_examples=pronunciation_examples,
+        )
+        persisted = next(
+            row for row in json.loads(ratings_path.read_text(encoding="utf-8"))["items"]
+            if row["pair_id"] == selected_id
+        )
+        if persisted != saved:
+            st.error("Không thể xác minh bản lưu. Hãy dừng chấm và báo người nghiên cứu.")
+            st.stop()
+        refreshed = json.loads(ratings_path.read_text(encoding="utf-8"))["items"]
+        next_pending = next((i for i, row in enumerate(refreshed)
+                             if not row.get("human_confirmed")), min(index + 1, total - 1))
+        st.session_state["teacher_validation_index"] = next_pending
+        st.session_state["teacher_validation_last_saved"] = selected_id
+        st.session_state.pop("teacher_validation_pair", None)
+        st.rerun()
+
+    if completed_count == total:
+        st.success("DEVELOPMENT VALIDATION RATINGS COMPLETE: 5/5")
+        st.caption("Không tự động retrain, recalibrate, merge ratings hoặc mở holdout.")
+
+
 def _phase2_assessment_result_dashboard() -> None:
     """Evidence-first result page that never displays an uncalibrated numeric score."""
     from speaking_evidence.p22 import DISCLAIMER, RATING_IDS
@@ -1142,6 +1279,10 @@ direct_mode = st.query_params.get("mode")
 if direct_mode == "teacher":
     st.markdown("<style>section[data-testid='stSidebar']{display:none}</style>", unsafe_allow_html=True)
     _teacher_rating_dashboard()
+    st.stop()
+if direct_mode == "teacher_validation":
+    st.markdown("<style>section[data-testid='stSidebar']{display:none}</style>", unsafe_allow_html=True)
+    _teacher_validation_dashboard()
     st.stop()
 if direct_mode == "p22result":
     _phase2_assessment_result_dashboard()

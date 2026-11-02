@@ -1392,3 +1392,24 @@ No pretrained or hybrid candidate was promoted merely for a marginal metric chan
 
 **Next action:** independently review the P2.4 report. If human validation is later collected for the five reserved development videos, run it once against these already-frozen winners only. Do not use those ratings to reselect models, do not touch the fixed holdout, and do not start feedback automatically.
 
+# P2.4 DEVELOPMENT-VALIDATION RATING QUEUE (2026-11-02)
+
+A separate, machine-blind teacher workflow is ready for the five frozen development-validation recordings: `T001-D006`, `T001-D023`, `T001-D064`, `T001-D043`, and `T001-D048`.
+
+- Direct UI mode: `?mode=teacher_validation`.
+- Launcher: `START_VALIDATION_RATING.bat`.
+- Private artifact: `human_ground_truth/p24_validation_v1/development_validation_ratings_v1.json`.
+- Current progress: **0/5**. Fluency, Pronunciation, Intelligibility and Prosody all initialize to null; no value is prefilled.
+- The artifact is versioned as `P24-development-validation-four-criterion-v1` and records teacher/human-review provenance, AI workflow assistance, `DEVELOPMENT_VALIDATION` split, `RAW_CROPPED` audio source, frozen-plan hash and timestamps.
+- Teacher playback uses the raw completed Duet plus the P2.4 validation input created by cropping/masking raw audio with Phase-1 learner intervals. Cancellation/residual audio is not used.
+- The page shows only these five recordings, the four-criterion rubric, required scorability confirmation for D006/D023, optional pronunciation examples and `Save & Next`. It does not display machine evidence, pretrained outputs, frozen winners, predictions or calibration scores.
+- Saves use the existing atomic replacement and timestamped private backup behavior. Restart persistence and backup creation were verified with isolated fixtures.
+- Completion at 5/5 only shows `DEVELOPMENT VALIDATION RATINGS COMPLETE: 5/5`. It does not merge into the original 12, recalibrate, retrain, reselect P2.4, open holdout or start P2.5.
+- The original 12-rating artifact remains byte-identical at SHA-256 `6ffc1be2661c8ef3fbcf084c2cb4f83cec175d9f1996f20a444cdc6e13005f62`. The frozen P2.4 plan remains byte-identical at SHA-256 `28b2e4ef7c17214c202e09bcc1a5c01c7cecc309a81881c86dec21b81886836a`.
+- Targeted validation-workflow tests: **7 passed**. Full suite: **96 passed, 3 skipped**. Python compilation passed. The no-browser launcher and Streamlit health check passed.
+- The fixed 18-video holdout was not opened, processed or used.
+
+**Current status:** waiting for the teacher to rate all five development-validation videos.
+
+**Next separate step after 5/5:** P2.5 evaluates the already-frozen P2.4 winners exactly once. Do not use the five ratings to reselect models.
+
