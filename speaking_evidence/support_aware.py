@@ -159,7 +159,8 @@ def _standardize(train_x: np.ndarray, test_x: np.ndarray) -> tuple[np.ndarray, n
 
 
 def _logistic_fit(x: np.ndarray, y: np.ndarray, alpha: float,
-                  iterations: int = 100) -> np.ndarray:
+                  iterations: int = 100,
+                  sample_weight: np.ndarray | None = None) -> np.ndarray:
     design = np.column_stack([np.ones(len(x)), x])
     beta = np.zeros(design.shape[1], dtype=float)
     penalty = np.eye(design.shape[1]) * alpha
@@ -167,8 +168,10 @@ def _logistic_fit(x: np.ndarray, y: np.ndarray, alpha: float,
     for _ in range(iterations):
         linear = np.clip(design @ beta, -30.0, 30.0)
         probability = 1.0 / (1.0 + np.exp(-linear))
-        weights = np.maximum(probability * (1.0 - probability), 1e-6)
-        gradient = design.T @ (probability - y) + penalty @ beta
+        row_weight = (np.ones(len(y), dtype=float) if sample_weight is None
+                      else np.asarray(sample_weight, dtype=float))
+        weights = np.maximum(probability * (1.0 - probability), 1e-6) * row_weight
+        gradient = design.T @ ((probability - y) * row_weight) + penalty @ beta
         hessian = design.T @ (weights[:, None] * design) + penalty
         step = np.linalg.solve(hessian, gradient)
         beta -= step
@@ -183,7 +186,8 @@ def _probability(beta: np.ndarray, x: np.ndarray) -> float:
 
 
 def fit_restricted_binary_mapping(rows: list[dict], label: str,
-                                  feature_names: tuple[str, ...], alpha: float = 2.0) -> dict:
+                                  feature_names: tuple[str, ...], alpha: float = 2.0,
+                                  class_weighted: bool = False) -> dict:
     """LOOCV logistic mapping whose expected score cannot leave observed support."""
     y_raw = np.asarray([int(row[label]) for row in rows], dtype=int)
     support = sorted(set(y_raw.tolist()))
@@ -194,17 +198,27 @@ def fit_restricted_binary_mapping(rows: list[dict], label: str,
     low, high = support
     y = (y_raw == high).astype(float)
     x = np.asarray([[float(row[name]) for name in feature_names] for row in rows], dtype=float)
+    def sample_weights(values: np.ndarray) -> np.ndarray | None:
+        if not class_weighted:
+            return None
+        local_counts = Counter(int(value) for value in values)
+        return np.asarray([
+            len(values) / (len(local_counts) * local_counts[int(value)])
+            for value in values
+        ], dtype=float)
     probabilities = []
     expected = []
     for index in range(len(rows)):
         keep = np.arange(len(rows)) != index
         train_x, test_x, _, _ = _standardize(x[keep], x[index:index + 1])
-        beta = _logistic_fit(train_x, y[keep], alpha)
+        beta = _logistic_fit(train_x, y[keep], alpha,
+                             sample_weight=sample_weights(y_raw[keep]))
         probability = _probability(beta, test_x[0])
         probabilities.append(probability)
         expected.append(low + (high - low) * probability)
     standardized, _, feature_mean, feature_scale = _standardize(x, x[:1])
-    beta = _logistic_fit(standardized, y, alpha)
+    beta = _logistic_fit(standardized, y, alpha,
+                         sample_weight=sample_weights(y_raw))
     predicted_class = np.asarray([high if p >= 0.5 else low for p in probabilities])
     accuracy = float(np.mean(predicted_class == y_raw))
     recalls = [float(np.mean(predicted_class[y_raw == level] == level)) for level in support]
@@ -212,7 +226,8 @@ def fit_restricted_binary_mapping(rows: list[dict], label: str,
     collapsed = len(set(predicted_class.tolist())) < 2
     counts = Counter(y_raw.tolist())
     severe_imbalance = min(counts.values()) < 3
-    stable = not severe_imbalance and not collapsed and balanced_accuracy >= 0.5
+    stable = (not collapsed and balanced_accuracy >= 0.5
+              and (not severe_imbalance or (class_weighted and balanced_accuracy >= 0.6)))
     absolute_errors = np.abs(np.asarray(expected) - y_raw)
     status = ("DEVELOPMENT_PRELIMINARY_RANGE_LIMITED" if stable
               else "MACHINE_CALIBRATION_UNSTABLE")
@@ -221,6 +236,7 @@ def fit_restricted_binary_mapping(rows: list[dict], label: str,
         "exploratory_model_fitted": True,
         "model": "ridge_regularized_binary_logistic_expected_score",
         "alpha": alpha,
+        "class_weighted": class_weighted,
         "features": list(feature_names),
         "observed_support": support,
         "output_constraint": [low, high],

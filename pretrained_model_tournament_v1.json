@@ -1,0 +1,221 @@
+{
+  "version": "P2.4-pretrained-model-tournament-plan-v1",
+  "status": "FROZEN_BEFORE_CANDIDATE_BENCHMARK",
+  "frozen_at_utc": "2026-10-31T06:05:00Z",
+  "purpose": "Predeclare a small, reproducible pretrained speech-model tournament before inspecting candidate-vs-NCKH12-human performance.",
+  "data_policy": {
+    "calibration_model_selection_set": [
+      "T001-D005", "T001-D007", "T001-D015", "T001-D028",
+      "T001-D039", "T001-D041", "T001-D046", "T001-D059",
+      "T001-D068", "T001-D009", "T001-D010", "T001-D034"
+    ],
+    "development_model_validation_set": [
+      "T001-D006", "T001-D023", "T001-D064", "T001-D043", "T001-D048"
+    ],
+    "validation_labels_available_for_selection": false,
+    "holdout_policy": "FIXED_18_VIDEO_HOLDOUT_MUST_NOT_BE_OPENED_PROCESSED_OR_USED",
+    "neural_finetuning_allowed": false,
+    "synthetic_human_labels_allowed": false
+  },
+  "canonical_audio": {
+    "source": "RAW_COMPLETED_DUET",
+    "preprocessing": "FFmpeg mono 16 kHz PCM16 crop with samples outside Phase-1 learner intervals zeroed",
+    "forbidden_scoring_sources": [
+      "CANCELLATION_RESIDUAL", "REFERENCE_CANCELLED_AUDIO", "DETECTION_AUDIO"
+    ]
+  },
+  "runtime_environment": {
+    "os": "Windows 10 build 26200",
+    "python": "3.11.4",
+    "cpu": "Intel Core i5-12450H, 8 cores / 12 logical processors",
+    "ram_bytes": 16866684928,
+    "gpu_hardware": "NVIDIA GeForce RTX 3050 Laptop GPU, 4096 MiB",
+    "torch": "2.11.0+cpu",
+    "torch_cuda_available": false,
+    "faster_whisper": "1.2.1",
+    "ctranslate2": "4.8.1",
+    "transformers": "5.17.0",
+    "praat_parselmouth": "0.4.6"
+  },
+  "resource_limits": {
+    "execution_device": "CPU",
+    "maximum_apa_weight_file_bytes": 2000000000,
+    "maximum_peak_process_ram_bytes": 12000000000,
+    "minimum_free_disk_bytes_after_download": 10000000000,
+    "asr_compute_type": "int8",
+    "apa_dtype": "float32",
+    "whisperx_isolation": ".local/p24-whisperx",
+    "candidate_failure_policy": "Record BACKEND_UNAVAILABLE and continue with the existing baseline; never break the base pipeline."
+  },
+  "candidates": {
+    "asr": [
+      {
+        "candidate_id": "ASR_A_SMALL_EN",
+        "model_id": "Systran/faster-whisper-small.en",
+        "revision": "d1d751a5f8271d482d14ca55d9e2deeebbae577f",
+        "role": "CURRENT_CANONICAL_BASELINE",
+        "device": "cpu",
+        "compute_type": "int8"
+      },
+      {
+        "candidate_id": "ASR_B_DISTIL_LARGE_V3",
+        "model_id": "Systran/faster-distil-whisper-large-v3",
+        "revision": "c3058b475261292e64a0412df1d2681c06260fab",
+        "role": "CHALLENGER_AND_MULTI_ASR_STABILITY",
+        "device": "cpu",
+        "compute_type": "int8"
+      },
+      {
+        "candidate_id": "ASR_C_LARGE_V3_TURBO",
+        "model_id": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+        "revision": "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf",
+        "role": "CHALLENGER_AND_MULTI_ASR_STABILITY",
+        "device": "cpu",
+        "compute_type": "int8"
+      }
+    ],
+    "alignment": [
+      {
+        "candidate_id": "ALIGN_CURRENT_WHISPER_WORD_TIMESTAMPS",
+        "role": "BASELINE"
+      },
+      {
+        "candidate_id": "ALIGN_WHISPERX_WAV2VEC2",
+        "package": "whisperx==3.8.6",
+        "official_repository": "m-bain/whisperX",
+        "align_model": "WAV2VEC2_ASR_BASE_960H",
+        "role": "OPTIONAL_ALIGNMENT_ONLY",
+        "canonical_transcript_replaced": false
+      }
+    ],
+    "apa": [
+      {
+        "candidate_id": "APA_1_WAV2VEC2_LARGE_GENERAL",
+        "repository": "haeylee/ssl_ft_pron",
+        "repository_revision": "ac652a1e58a44e824ac3e6399173d353ff2ae204",
+        "subfolder": "wav2vec2/general/01_wav2vec2-large",
+        "weight_oid": "7a1d7977bb09e1003d50b336c86f4bc978e9115d",
+        "weight_bytes": 1261781352,
+        "intended_criteria": ["pronunciation_accuracy", "fluency", "prosody"],
+        "output_type": "PRETRAINED_EMBEDDING_FEATURE",
+        "direct_pretrained_score_available": false,
+        "pooling": "Official-method mean pooling of last hidden state; two PCA components fitted without human labels and then frozen."
+      },
+      {
+        "candidate_id": "APA_2_HUBERT_XLARGE_LS960_FT_CTC",
+        "repository": "haeylee/ssl_ft_pron",
+        "repository_revision": "ac652a1e58a44e824ac3e6399173d353ff2ae204",
+        "subfolder": "hubert/ctc/09_hubert-xlarge-ls960-ft",
+        "weight_oid": "27b75b3616cb1da01dab9ce2f773356de2ef7fc8",
+        "weight_bytes": 3850258896,
+        "intended_criteria": ["pronunciation_accuracy", "fluency", "prosody"],
+        "output_type": "RESOURCE_GATED_PRETRAINED_EMBEDDING_FEATURE",
+        "execution_rule": "Do not load when weight file exceeds frozen 2 GB limit.",
+        "fallback_candidate_id": "APA_2F_HUBERT_BASE_LS960_GENERAL"
+      },
+      {
+        "candidate_id": "APA_2F_HUBERT_BASE_LS960_GENERAL",
+        "repository": "haeylee/ssl_ft_pron",
+        "repository_revision": "ac652a1e58a44e824ac3e6399173d353ff2ae204",
+        "subfolder": "hubert/general/07_hubert-base-ls960",
+        "weight_oid": "72854bef7e523ad3e8c406639888c35ee1ded9f2",
+        "weight_bytes": 377524352,
+        "intended_criteria": ["pronunciation_accuracy", "fluency", "prosody"],
+        "output_type": "PREDECLARED_RESOURCE_FALLBACK_EMBEDDING_FEATURE",
+        "direct_pretrained_score_available": false,
+        "pooling": "Official-method mean pooling of last hidden state; two PCA components fitted without human labels and then frozen."
+      }
+    ],
+    "pronunciation_optional": {
+      "gopt": "GOPT_NOT_SELECTED_FOR_MVP unless clean official inference is immediately available",
+      "phoneme_recognizer": "DEFERRED_UNLESS_CORE_TOURNAMENT_COMPLETES_WITH_SPARE_TIME",
+      "openpronounce": "BLOCKED_ESPEAK_NG_RUNTIME_FAILURE_DO_NOT_RETRY"
+    }
+  },
+  "fixed_feature_sets": {
+    "fluency_baseline": [
+      "pause_ratio", "long_pause_count", "longest_pause_sec",
+      "mean_length_of_run_words", "speech_rate_wpm",
+      "articulation_rate_wpm", "phonation_ratio"
+    ],
+    "intelligibility_single_asr": [
+      "mean_word_probability", "min_word_probability",
+      "low_confidence_word_fraction", "mean_segment_logprob",
+      "mean_no_speech_probability"
+    ],
+    "intelligibility_multi_asr": [
+      "small_mean_word_probability", "small_low_confidence_word_fraction",
+      "small_vs_distil_normalized_edit_distance",
+      "small_vs_turbo_normalized_edit_distance",
+      "three_asr_word_count_coefficient_of_variation",
+      "target_alignment_coverage_range"
+    ],
+    "prosody_baseline": [
+      "f0_range_semitones", "f0_std_semitones",
+      "intensity_std_db", "voiced_fraction"
+    ],
+    "apa_embedding_features": ["pca_component_1", "pca_component_2"],
+    "fluency_apa": ["apa1_pca_component_1", "apa1_pca_component_2"],
+    "fluency_hybrid": ["pause_ratio", "mean_length_of_run_words", "apa1_pca_component_1"],
+    "pronunciation_apa1": ["apa1_pca_component_1", "apa1_pca_component_2"],
+    "pronunciation_apa2_fallback": ["apa2f_pca_component_1", "apa2f_pca_component_2"],
+    "intelligibility_hybrid": [
+      "small_mean_word_probability", "small_vs_distil_normalized_edit_distance",
+      "small_vs_turbo_normalized_edit_distance"
+    ],
+    "prosody_apa": ["apa1_pca_component_1", "apa1_pca_component_2"],
+    "prosody_hybrid": ["f0_range_semitones", "intensity_std_db", "apa1_pca_component_1"],
+    "hybrid_policy": "Use only the exact fixed hybrid feature lists above; no label-driven feature search."
+  },
+  "evaluation": {
+    "asr_reference_ids": [
+      "T001-D028", "T001-D015", "T001-D068",
+      "T001-D007", "T001-D059", "T001-D005"
+    ],
+    "asr_metrics": [
+      "micro_wer", "mean_wer", "median_wer", "substitutions",
+      "insertions", "deletions", "runtime_sec", "peak_ram_bytes",
+      "peak_vram_bytes", "failure_count"
+    ],
+    "binary_criterion_metrics": [
+      "loo_mae", "classification_accuracy", "balanced_accuracy",
+      "majority_class_collapse", "prediction_variance", "runtime_sec",
+      "missing_evidence_rate"
+    ],
+    "multi_level_metrics": [
+      "loo_mae", "within_one_band_agreement", "spearman_correlation",
+      "coefficient_stability", "runtime_sec", "missing_evidence_rate"
+    ]
+  },
+  "selection_policy": {
+    "asr_replacement": "A challenger must improve micro-WER by at least 1.0 absolute percentage point or 15% relative while having zero failures and no more than 4x baseline runtime/RAM burden.",
+    "criterion_selection_order": [
+      "cross_validated_predictive_performance", "non_degenerate_behavior",
+      "stability", "explainability", "missing_evidence_rate", "runtime",
+      "hardware_requirements", "reproducibility"
+    ],
+    "tie_rule": "If practically tied, retain the simpler baseline.",
+    "intelligibility_promotion": "Must avoid majority-class collapse and exceed majority balanced accuracy by at least 0.10.",
+    "binary_challenger_promotion": "Must be stable and improve LOOCV MAE by at least 0.05, or improve balanced accuracy by at least 0.10 without worsening MAE by more than 0.05.",
+    "multi_level_challenger_promotion": "Must be stable and improve LOOCV MAE by at least 0.05, or improve Spearman by at least 0.10 without worsening MAE by more than 0.05.",
+    "observed_support_constraints": {
+      "fluency": [4, 5],
+      "pronunciation": [3, 4],
+      "intelligibility": [4, 5],
+      "prosody": [2, 5]
+    },
+    "overall_score_allowed": false,
+    "external_benchmark_numbers_are_nckh12_results": false
+  },
+  "result_statuses": [
+    "SELECTED_PRELIMINARY", "BASELINE_RETAINED",
+    "MACHINE_CALIBRATION_UNSTABLE", "EVIDENCE_ONLY", "BACKEND_UNAVAILABLE"
+  ],
+  "future_validation_policy": {
+    "machine_evidence_may_be_generated_before_ratings": true,
+    "future_validation_ratings_must_not_affect_selection": true,
+    "winner_freeze_required_before_validation_ratings": true,
+    "evaluation_runs": 1
+  },
+  "prohibited_claims": ["CEFR", "B2", "IELTS", "PHONEME_ERROR_WITHOUT_VALIDATED_PHONEME_EVIDENCE"]
+}
