@@ -1336,3 +1336,59 @@ No Overall score was created. Machine mappings with different validation states,
 
 **Next task:** obtain independent review of the P2.2C criterion reports, then choose either (a) proceed with evidence-grounded Phase-3 work for supported Fluency and Completeness only, or (b) optionally collect the five development coverage-expansion ratings before revisiting unstable criteria. Do not open the holdout or create an Overall/Pronunciation machine score.
 
+# P2.4 — PRETRAINED SPEECH MODEL TOURNAMENT (2026-11-02)
+
+P2.4 is complete and its development-only winners are frozen. The candidate/method plan was created before candidate performance was inspected and remained byte-identical throughout the run: `pretrained_model_tournament_v1.json` SHA-256 `28b2e4ef7c17214c202e09bcc1a5c01c7cecc309a81881c86dec21b81886836a`. The 12 source ratings also remained byte-identical at SHA-256 `6ffc1be2661c8ef3fbcf084c2cb4f83cec175d9f1996f20a444cdc6e13005f62`.
+
+## Data and execution policy
+
+- Model selection used only the 12 frozen rated development recordings.
+- `T001-D006`, `T001-D023`, `T001-D064`, `T001-D043`, and `T001-D048` received machine evidence only. No human rating for these five was read or created, and they did not affect selection.
+- Every model input was derived from the raw completed Duet as mono 16 kHz PCM16 and masked by Phase-1 learner intervals. Cancellation/residual audio was never used as scoring audio.
+- The fixed 18-video holdout was not opened, processed, rated, or used.
+- No neural model was trained or fine-tuned on NCKH12. No Overall score and no learner feedback were generated.
+
+## ASR benchmark
+
+All three frozen faster-whisper candidates ran on the same six human references and all 17 permitted development inputs using CPU/int8 and identical decoding settings.
+
+- `small.en`: micro-WER 0.0502; mean WER 0.0502; median WER 0.0599; S/D/I = 25/2/14; six-reference runtime 159.16 s; peak process-tree RAM 905,220,096 bytes; zero failures.
+- `distil-large-v3`: micro-WER 0.0869; mean WER 0.0871; median WER 0.0875; S/D/I = 52/2/17; runtime 739.47 s; peak RAM 1,841,238,016 bytes; zero failures.
+- `large-v3-turbo`: micro-WER 0.0881; mean WER 0.0883; median WER 0.0945; S/D/I = 53/2/17; runtime 765.80 s; peak RAM 1,951,686,656 bytes; zero failures.
+
+Decision: `small.en` remains canonical under the frozen replacement rule. Both challengers had worse WER and substantially higher runtime/RAM burden.
+
+The first `small.en` cache attempt hit Windows symlink privilege error 1314. The exact frozen revision was then materialized without symlinks and benchmarked successfully. The failed attempt is preserved separately; challenger evidence was reused rather than rerun.
+
+## Alignment and pretrained speech evidence
+
+- Isolated `whisperx==3.8.6` installed successfully after a first dependency-resolution-loop attempt was terminated safely. The final isolated environment uses Torch 2.8.0 CPU and Transformers 4.57.6; the main environment remained unchanged.
+- WhisperX aligned the canonical `small.en` transcript for all 17 permitted inputs without replacing canonical text. Mean absolute positionally comparable timing differences were 0.1898 s at word starts and 0.1199 s at word ends.
+- WhisperX Fluency LOOCV MAE was 0.4031 versus baseline 0.4204, but balanced accuracy declined from 0.6250 to 0.5625 and the MAE gain was below the frozen promotion threshold. The handcrafted Fluency baseline was retained.
+- SSL-FT-PRON Wav2Vec2-large exited on Windows with access violation `0xC0000005` during strict official-wrapper checkpoint loading and is recorded as `BACKEND_UNAVAILABLE`; no partial/randomly initialized embedding was accepted.
+- HuBERT xlarge exceeded the frozen 2 GB weight gate and is `BACKEND_UNAVAILABLE_RESOURCE_LIMIT`; it was not loaded.
+- The predeclared HuBERT-base fallback loaded the full released wrapper state with `strict=True`; only the fine-tuned encoder was used. It produced 17 duration-weighted mean-pooled embeddings, peak RAM 1,286,836,224 bytes, total item runtime 261.19 s. PCA used two components fitted without human labels. These are `PRETRAINED_EMBEDDING_FEATURE`, not direct pronunciation scores.
+
+## Frozen criterion decisions
+
+- Fluency: `F0_BASELINE` retained. Baseline MAE 0.4204 / balanced accuracy 0.6250; WhisperX did not clear the promotion margin; HuBERT-base embedding was unstable (MAE 0.5301, balanced accuracy 0.4375).
+- Pronunciation: no defensible automatic scorer. The ASR recognition baseline remains `MACHINE_CALIBRATION_UNSTABLE` (MAE 0.5869, balanced accuracy 0.4286); HuBERT-base was also unstable (MAE 0.5816, balanced accuracy 0.2143). These are not phoneme-error evidence.
+- Intelligibility: single-ASR baseline retained but remains `MACHINE_CALIBRATION_UNSTABLE`. Multi-ASR variants did not satisfy the promotion rule.
+- Prosody: Praat baseline retained but remains `MACHINE_CALIBRATION_UNSTABLE`; HuBERT-base did not improve it.
+- Completeness: deterministic `ASR-assisted Reading Completeness` retained. Backend sensitivity is preserved, and ASR differences are not treated as proven learner errors.
+
+No pretrained or hybrid candidate was promoted merely for a marginal metric change. Feature counts and feature/N ratios are stored for every supervised candidate; ratios above 0.25 are explicitly marked methodologically unsafe for N=12.
+
+## Artifacts and verification
+
+- Human-readable report: `PRETRAINED_MODEL_TOURNAMENT_REPORT.md`.
+- Local versioned evidence and frozen winners: `assessment_runs/T001_p24_tournament_v1/`, including `winner_freeze_v1.json` and `tournament_final_summary.json`.
+- Targeted P2.4 tests: 8 passed.
+- Full normal suite, including Streamlit AppTest coverage: **89 passed, 3 skipped**.
+- Python compilation passed for the P2.4 implementation; final full-tree compilation is recorded in the sprint log.
+- Private media, WAVs, ratings, embeddings, model weights, caches, and local environments remain excluded from Git.
+
+**Current status:** P2.4 tournament complete; criterion winners frozen before any five-video validation rating.
+
+**Next action:** independently review the P2.4 report. If human validation is later collected for the five reserved development videos, run it once against these already-frozen winners only. Do not use those ratings to reselect models, do not touch the fixed holdout, and do not start feedback automatically.
+

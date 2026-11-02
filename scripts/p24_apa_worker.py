@@ -11,7 +11,19 @@ import numpy as np
 import psutil
 import soundfile as sf
 import torch
+from huggingface_hub import hf_hub_download
+from safetensors.torch import load_file
+from torch import nn
 from transformers import AutoConfig, AutoFeatureExtractor, HubertModel, Wav2Vec2Model
+
+
+class OfficialPronunciationScoringModel(nn.Module):
+    """Architecture released by SSL-FT-PRON; its score head is not emitted here."""
+
+    def __init__(self, encoder: nn.Module, hidden_size: int):
+        super().__init__()
+        self.model = encoder
+        self.score_predictor = nn.Linear(hidden_size, 4)
 
 
 def main() -> int:
@@ -25,11 +37,17 @@ def main() -> int:
     started_load = time.perf_counter()
     config = AutoConfig.from_pretrained(candidate["base_model"])
     extractor = AutoFeatureExtractor.from_pretrained(candidate["base_model"])
-    model = model_class.from_pretrained(
-        candidate["repository"], subfolder=candidate["subfolder"],
-        revision=candidate["revision"], config=config, use_safetensors=True,
+    encoder = model_class.from_pretrained(candidate["base_model"], config=config)
+    wrapper = OfficialPronunciationScoringModel(encoder, config.hidden_size)
+    checkpoint = hf_hub_download(
+        repo_id=candidate["repository"],
+        filename=f"{candidate['subfolder']}/model.safetensors",
+        revision=candidate["revision"],
     )
-    model.eval().to("cpu")
+    state = load_file(checkpoint, device="cpu")
+    wrapper.load_state_dict(state, strict=True)
+    model = wrapper.model.eval().to("cpu")
+    del state
     load_runtime = time.perf_counter() - started_load
     process = psutil.Process()
     peak_rss = process.memory_info().rss
@@ -85,8 +103,12 @@ def main() -> int:
         "version": "P2.4-ssl-ft-pron-embedding-v1", "candidate": candidate,
         "status": "EMBEDDING_EXTRACTION_COMPLETE",
         "official_method": "last-hidden-state temporal mean pooling",
+        "official_checkpoint_load": "full released wrapper state loaded strict=True; encoder extracted",
+        "official_checkpoint_file": f"{candidate['subfolder']}/model.safetensors",
         "resource_adaptation": "15-second chunk mean pooling, duration-weighted across chunks",
-        "scoring_head_available": False, "direct_pretrained_scores_emitted": False,
+        "scoring_head_present_in_checkpoint_but_not_emitted": True,
+        "scoring_head_available_as_packaged_inference_contract": False,
+        "direct_pretrained_scores_emitted": False,
         "model_load_runtime_sec": load_runtime,
         "total_item_runtime_sec": sum(item["runtime_sec"] for item in items),
         "peak_process_ram_bytes": peak_rss, "device": "cpu", "dtype": "float32",

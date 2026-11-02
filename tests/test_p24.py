@@ -7,6 +7,7 @@ import pytest
 from speaking_evidence.p24 import (
     RATING_IDS,
     VALIDATION_IDS,
+    _attach_mapping_diagnostics,
     load_frozen_plan,
     normalized_edit_distance,
     select_binary_candidate,
@@ -92,3 +93,13 @@ def test_model_weights_and_private_media_are_not_tracked():
     assert not any(path.lower().endswith(forbidden_suffixes) for path in tracked)
     assert not any(path.startswith(("data/", "human_ground_truth/", "assessment_runs/"))
                    for path in tracked)
+
+
+def test_feature_to_sample_ratio_is_explicitly_flagged():
+    result = _attach_mapping_diagnostics({
+        "features": ["a", "b", "c", "d"], "loo_predictions": [1.0, 2.0]
+    }, runtime_sec=1.0)
+    assert result["feature_count"] == 4
+    assert result["model_selection_sample_size"] == 12
+    assert result["supervised_feature_to_n_ratio"] == pytest.approx(1 / 3)
+    assert result["feature_ratio_warning"] == "METHODOLOGICALLY_UNSAFE_FEATURE_TO_N_RATIO"

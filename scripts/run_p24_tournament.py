@@ -6,6 +6,10 @@ import platform
 import sys
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from speaking_evidence.p24 import (
     VERSION,
     _asr_selection,
@@ -43,8 +47,12 @@ def write_report(root: Path, final: dict) -> None:
     for item in asr["candidates"]:
         asr_rows.append(
             f"| {item['candidate_id']} | {_metric(item, 'micro_wer')} | "
+            f"{_metric(item, 'mean_wer')} | {_metric(item, 'median_wer')} | "
+            f"{item.get('substitutions', 'n/a')} / {item.get('deletions', 'n/a')} / "
+            f"{item.get('insertions', 'n/a')} | "
             f"{_metric(item, 'runtime_sec_reference_six')} | "
             f"{item.get('peak_process_tree_ram_bytes', 'n/a')} | "
+            f"{item.get('failure_count', 'n/a')} | "
             f"{'YES' if item['candidate_id'] == final['asr_selection']['selected'] else 'NO'} | "
             f"{item.get('status')} |"
         )
@@ -58,6 +66,8 @@ def write_report(root: Path, final: dict) -> None:
                 f"{_metric(mapping, 'balanced_accuracy')} | "
                 f"{_metric(mapping, 'within_one_band_agreement')} | "
                 f"{_metric(mapping, 'spearman_correlation')} | "
+                f"{mapping.get('feature_count', 0)} | "
+                f"{_metric(mapping, 'supervised_feature_to_n_ratio')} | "
                 f"{'YES' if candidate_id == selected else 'NO'} |"
             )
         return rows
@@ -65,11 +75,15 @@ def write_report(root: Path, final: dict) -> None:
     apa_rows = []
     for item in apa["candidates"]:
         candidate = item.get("candidate", {})
+        reason = item.get("reason") or (
+            f"WINDOWS_PROCESS_EXIT_{item['returncode']}" if item.get("returncode") else "n/a"
+        )
         apa_rows.append(
-            f"| {candidate.get('candidate_id')} | {item.get('status')} | "
+            f"| {candidate.get('candidate_id')} | {candidate.get('subfolder', 'n/a')} | "
+            f"{candidate.get('weight_bytes', 'n/a')} | {item.get('status')} | "
             f"{item.get('device', 'n/a')} | {item.get('peak_process_ram_bytes', 'n/a')} | "
             f"{item.get('total_item_runtime_sec', 'n/a')} | "
-            f"{'NO' if not item.get('direct_pretrained_scores_emitted') else 'YES'} |"
+            f"{'NO' if not item.get('direct_pretrained_scores_emitted') else 'YES'} | {reason} |"
         )
     aligned_items = [item for item in alignment.get("items", []) if item.get("timing_comparison")]
     mean_start = (sum(item["timing_comparison"]["mean_absolute_start_delta_sec"]
@@ -91,10 +105,20 @@ def write_report(root: Path, final: dict) -> None:
         "",
         "All NCKH12 metrics below are measured locally. Published external benchmark values were used only to predeclare candidates and are not reported as NCKH12 results.",
         "",
+        "## Engineering provenance",
+        "",
+        "- `WHISPERX_INSTALL_ATTEMPT_1`: dependency-resolution loop; terminated safely; main environment unaffected.",
+        "- Final isolated alignment environment: `whisperx==3.8.6`, `torch==2.8.0+cpu`, `transformers==4.57.6`; dependency check passed.",
+        "- Main environment remained `torch==2.11.0` (CPU-only), `transformers==5.17.0`, `ctranslate2==4.8.1`.",
+        "- RTX 3050 4 GB and one CTranslate2 CUDA device were detected, but the frozen CPU/int8 policy was retained for reproducibility. Peak VRAM was 0 for measured candidates.",
+        "- The first small.en materialization attempt hit Windows symlink privilege error 1314. The exact frozen revision was then materialized without symlinks and benchmarked successfully; challengers were not rerun.",
+        "",
         "## ASR",
         "",
-        "| model | micro-WER | six-reference runtime (s) | peak process RAM (bytes) | selected | status |",
-        "|---|---:|---:|---:|---|---|",
+        "All candidates used CPU, int8, identical audio, normalization and decoding settings.",
+        "",
+        "| model | micro-WER | mean WER | median WER | S / D / I | six-ref runtime (s) | peak RAM (bytes) | failures | selected | status |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---|---|",
         *asr_rows,
         "",
         f"Selected: `{final['asr_selection']['selected']}` — {final['asr_selection']['reason']}.",
@@ -107,16 +131,16 @@ def write_report(root: Path, final: dict) -> None:
         "",
         "## SSL-FT-PRON pretrained evidence",
         "",
-        "| candidate | status | device | peak RAM (bytes) | item runtime (s) | direct score |",
-        "|---|---|---|---:|---:|---|",
+        "| candidate | official subpath | weight bytes | status | device | peak RAM (bytes) | item runtime (s) | direct score | failure/resource note |",
+        "|---|---|---:|---|---|---:|---:|---|---|",
         *apa_rows,
         "",
-        "The official collection did not expose a packaged four-score inference head usable through its documented encoder loading path. Outputs are therefore labeled `PRETRAINED_EMBEDDING_FEATURE`, never direct pronunciation scores. Mean pooling follows the official method; PCA was fitted without human labels and frozen.",
+        "The released General/Freeze checkpoint state contains an official four-output training head, but the documented packaged encoder loading path does not provide a sufficiently clear standalone score-inference contract for this tournament. For the successful HuBERT-base fallback, the full wrapper state was loaded with `strict=True`; only its fine-tuned encoder was used. Outputs are therefore labeled `PRETRAINED_EMBEDDING_FEATURE`, never direct pronunciation scores. Mean pooling follows the official method; PCA was fitted without human labels and frozen.",
         "",
         "## Fluency",
         "",
-        "| candidate | status | LOOCV MAE | balanced accuracy | within-one | Spearman | selected |",
-        "|---|---|---:|---:|---:|---:|---|",
+        "| candidate | status | LOOCV MAE | balanced accuracy | within-one | Spearman | features | features/N | selected |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---|",
         *criterion_table("fluency"),
         "",
         f"Winner: `{tournament['selections']['fluency']['selected']}` — {tournament['selections']['fluency']['reason']}.",
@@ -124,8 +148,8 @@ def write_report(root: Path, final: dict) -> None:
         "",
         "## Pronunciation",
         "",
-        "| candidate | status | LOOCV MAE | balanced accuracy | within-one | Spearman | selected |",
-        "|---|---|---:|---:|---:|---:|---|",
+        "| candidate | status | LOOCV MAE | balanced accuracy | within-one | Spearman | features | features/N | selected |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---|",
         *criterion_table("pronunciation"),
         "",
         f"Winner: `{tournament['selections']['pronunciation']['selected']}` — {tournament['selections']['pronunciation']['reason']}.",
@@ -133,8 +157,8 @@ def write_report(root: Path, final: dict) -> None:
         "",
         "## Intelligibility",
         "",
-        "| candidate | status | LOOCV MAE | balanced accuracy | within-one | Spearman | selected |",
-        "|---|---|---:|---:|---:|---:|---|",
+        "| candidate | status | LOOCV MAE | balanced accuracy | within-one | Spearman | features | features/N | selected |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---|",
         *criterion_table("intelligibility"),
         "",
         f"Winner/status: `{tournament['selections']['intelligibility']['selected']}` / `{tournament['selections']['intelligibility']['status']}`.",
@@ -142,8 +166,8 @@ def write_report(root: Path, final: dict) -> None:
         "",
         "## Prosody",
         "",
-        "| candidate | status | LOOCV MAE | balanced accuracy | within-one | Spearman | selected |",
-        "|---|---|---:|---:|---:|---:|---|",
+        "| candidate | status | LOOCV MAE | balanced accuracy | within-one | Spearman | features | features/N | selected |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---|",
         *criterion_table("prosody"),
         "",
         f"Winner/status: `{tournament['selections']['prosody']['selected']}` / `{tournament['selections']['prosody']['status']}`.",
@@ -174,6 +198,7 @@ def write_report(root: Path, final: dict) -> None:
         "- DEVELOPMENT / PRELIMINARY only.",
         "- NOT CEFR, NOT B2, NOT IELTS.",
         "- N=12 model-selection sample with restricted human ranges.",
+        "- Feature/N ratios above 0.25 are explicitly flagged as methodologically unsafe; such candidates cannot be promoted on a marginal metric difference.",
         "- No large speech model was fine-tuned on NCKH12.",
         "- No Overall score was generated.",
         "- Fixed 18-video holdout untouched.",
@@ -183,7 +208,7 @@ def write_report(root: Path, final: dict) -> None:
 
 
 def main() -> int:
-    root = Path(__file__).resolve().parents[1]
+    root = PROJECT_ROOT
     tournament_root = root / "assessment_runs/T001_p24_tournament_v1"
     plan_path = root / "pretrained_model_tournament_v1.json"
     final_path = tournament_root / "tournament_final_summary.json"

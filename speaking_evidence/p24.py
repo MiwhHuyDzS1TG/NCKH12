@@ -38,7 +38,7 @@ VALIDATION_IDS = ("T001-D006", "T001-D023", "T001-D064", "T001-D043", "T001-D048
 ALL_P24_IDS = RATING_IDS + VALIDATION_IDS
 ALLOWED_STATUSES = {
     "SELECTED_PRELIMINARY", "BASELINE_RETAINED", "MACHINE_CALIBRATION_UNSTABLE",
-    "EVIDENCE_ONLY", "BACKEND_UNAVAILABLE",
+    "EVIDENCE_ONLY", "BACKEND_UNAVAILABLE", "BACKEND_UNAVAILABLE_RESOURCE_LIMIT",
 }
 
 
@@ -126,8 +126,30 @@ def prepare_validation_inputs(root: Path, output_root: Path) -> dict:
         row = by_id[pair_id]
         if row.get("quality_gate") == "RED":
             raise ValueError(f"RED item rejected from validation preparation: {pair_id}")
-        mapped = map_profile_to_duet(profile, row)
-        turn = mapped["turns"][0]
+        visual_alignment = row.get("visual_alignment") or {}
+        if visual_alignment.get("status") == "ok":
+            mapped = map_profile_to_duet(profile, row)
+            turn = mapped["turns"][0]
+            turn_mapping_method = "TASK_PROFILE_VIA_RELIABLE_VISUAL_ALIGNMENT"
+        else:
+            # Some predeclared AMBER validation cases are scorable from Phase-1
+            # intervals even though template-to-Duet visual alignment is not
+            # reliable.  Use only their machine-produced learner interval
+            # envelope; never substitute cancellation/residual audio.
+            source_intervals = [
+                {"start": float(segment["start"]), "end": float(segment["end"])}
+                for segment in row["learner_segments"]
+                if float(segment["end"]) > float(segment["start"])
+            ]
+            if not source_intervals:
+                raise ValueError(f"No Phase-1 learner intervals for {pair_id}")
+            duration = float(row["input_metadata"]["duet"]["duration_sec"])
+            turn = {
+                "turn_id": "phase1_learner_interval_envelope",
+                "start_sec": max(0.0, min(item["start"] for item in source_intervals)),
+                "end_sec": min(duration, max(item["end"] for item in source_intervals)),
+            }
+            turn_mapping_method = "PHASE1_LEARNER_INTERVAL_ENVELOPE_NO_VISUAL_ALIGNMENT"
         intervals = [
             {"start": max(turn["start_sec"], float(segment["start"])),
              "end": min(turn["end_sec"], float(segment["end"]))}
@@ -145,6 +167,7 @@ def prepare_validation_inputs(root: Path, output_root: Path) -> dict:
             "raw_duet_sha256": sha256_file(Path(row["duet_path"])),
             "model_input_ref": str(destination.relative_to(output_root)).replace("\\", "/"),
             "model_input_sha256": sha256_file(destination), "turn": prepared_turn,
+            "turn_mapping_method": turn_mapping_method,
             "quality_gate": row.get("quality_gate"),
             "scorability_status": row.get("scorability_status"), "holdout": False,
         }
@@ -192,11 +215,22 @@ def run_asr_tournament(root: Path, plan: dict, tournament_root: Path,
         candidate_id = candidate["candidate_id"]
         output = tournament_root / "asr" / candidate_id
         output.mkdir(parents=True, exist_ok=True)
+        summary_path = output / "summary.json"
+        if summary_path.is_file():
+            prior = json.loads(summary_path.read_text(encoding="utf-8"))
+            complete_files = all((output / f"{pair_id}.json").is_file()
+                                 for pair_id in ALL_P24_IDS)
+            if prior.get("status") == "EVIDENCE_READY" and complete_files:
+                print(f"[P2.4] ASR reusing complete {candidate_id}", flush=True)
+                summaries.append(prior)
+                continue
         print(f"[P2.4] ASR loading {candidate_id}", flush=True)
         try:
+            materialized_model = cache_root / "materialized" / candidate_id
             local_model = snapshot_download(
                 repo_id=candidate["model_id"], revision=candidate["revision"],
                 cache_dir=cache_root / "huggingface", local_files_only=False,
+                local_dir=materialized_model,
             )
             with PeakMemoryMonitor() as load_memory:
                 model = WhisperModel(local_model, device="cpu", compute_type="int8")
@@ -280,7 +314,7 @@ def run_asr_tournament(root: Path, plan: dict, tournament_root: Path,
                        "status": "BACKEND_UNAVAILABLE", "error": f"{type(exc).__name__}: {exc}",
                        "failure_count": len(ALL_P24_IDS), "processed_ids": [],
                        "holdout_processed": False}
-        _atomic_json(output / "summary.json", summary)
+        _atomic_json(summary_path, summary)
         summaries.append(summary)
     result = {"version": VERSION, "status": "ASR_TOURNAMENT_COMPLETE",
               "candidates": summaries, "holdout_processed": False}
@@ -462,10 +496,30 @@ def run_apa_candidates(root: Path, plan: dict, tournament_root: Path) -> dict:
         output_path = tournament_root / "apa" / f"{candidate_id}_summary.json"
         if candidate["weight_bytes"] > plan["resource_limits"]["maximum_apa_weight_file_bytes"]:
             summary = {"version": VERSION, "candidate": candidate,
-                       "status": "BACKEND_UNAVAILABLE", "reason": "FROZEN_RESOURCE_GATE",
+                       "status": "BACKEND_UNAVAILABLE_RESOURCE_LIMIT",
+                       "reason": "FROZEN_RESOURCE_GATE_WEIGHT_EXCEEDS_2GB",
+                       "output_type": candidate["output_type"],
                        "direct_pretrained_scores_emitted": False, "items": [],
                        "holdout_processed": False}
             _atomic_json(output_path, summary); summaries.append(summary); continue
+        if output_path.is_file():
+            prior = json.loads(output_path.read_text(encoding="utf-8"))
+            ready = sum(item.get("status") == "PRETRAINED_EMBEDDING_FEATURE_READY"
+                        for item in prior.get("items", []))
+            if prior.get("status") == "EMBEDDING_EXTRACTION_COMPLETE" and ready == len(ALL_P24_IDS):
+                print(f"[P2.4] APA reusing complete {candidate_id}", flush=True)
+                summaries.append(prior)
+                continue
+            if prior.get("status") == "BACKEND_UNAVAILABLE" and prior.get("returncode"):
+                if prior["returncode"] == 3221225477:
+                    prior["reason"] = (
+                        "WINDOWS_ACCESS_VIOLATION_0xC0000005_DURING_STRICT_CHECKPOINT_LOAD"
+                    )
+                prior["output_type"] = candidate["output_type"]
+                _atomic_json(output_path, prior)
+                print(f"[P2.4] APA preserving recorded failure {candidate_id}", flush=True)
+                summaries.append(prior)
+                continue
         model_architecture, base_model = architecture[candidate_id]
         request_candidate = {**candidate, "architecture": model_architecture,
                              "base_model": base_model,
@@ -533,6 +587,14 @@ def build_apa_pca_features(plan: dict, tournament_root: Path) -> dict:
 def _attach_mapping_diagnostics(mapping: dict, runtime_sec: float | None,
                                 missing_rate: float = 0.0) -> dict:
     result = dict(mapping)
+    feature_count = len(result.get("features", []))
+    result["feature_count"] = feature_count
+    result["model_selection_sample_size"] = len(RATING_IDS)
+    result["supervised_feature_to_n_ratio"] = feature_count / len(RATING_IDS)
+    result["feature_ratio_warning"] = (
+        "METHODOLOGICALLY_UNSAFE_FEATURE_TO_N_RATIO"
+        if feature_count / len(RATING_IDS) > 0.25 else None
+    )
     predictions = result.get("loo_predictions")
     if predictions:
         result["prediction_variance"] = float(np.var(predictions))
