@@ -1435,3 +1435,34 @@ The already-frozen deterministic backup ranking contained no eligible candidate.
 
 The retained eligible IDs are `T001-D064`, `T001-D043`, and `T001-D048`; all three remain `SCORABLE_CLEAN`. Because only three of the required five safe items exist, the private queue is `BLOCKED_INSUFFICIENT_SCORABLE_DEVELOPMENT_POOL`, reports progress **0/5**, contains only the three retained IDs, and keeps every criterion null. The teacher-validation UI displays the blocked state and exposes no rating controls. The original 12 ratings, frozen P2.4 plan and frozen winners are unchanged; holdout media/outcomes remain untouched. Teacher rating, P2.5 and calibration must not start from this incomplete queue.
 
+# P2.4D — DIRECT PRETRAINED COMPETITION SCORER (2026-11-03)
+
+P2.4D is complete. The released MultiPA checkpoint was run locally and pretrained-only on the 12 frozen human-rated development videos. MultiPA was selected because it directly predicts utterance Accuracy, Fluency and Prosody plus word Accuracy/Stress and supports a confirmed-text closed-response path. No NCKH12 neural training or fine-tuning occurred.
+
+## Isolated execution and input policy
+
+- MultiPA runs only in ignored `.local/multipa/` under Python 3.9.21; the main NCKH12 environment remains unchanged.
+- Official source commit: `a8d83ec1d80f9db60e6d32227cb1c562ee5e6022`; Hugging Face revision: `ff1e3c79bfb1d113d887a0b7b05fe2900c095264`; extracted checkpoint SHA-256: `cc1f02622c763e82f29d7d4d5a073ed45bf9d829013e2c6cc726371fe2d024e8`.
+- Input remained raw completed Duet -> existing Phase-1 learner crop/mask -> raw learner audio. Cancellation/residual audio was not used.
+- The human-confirmed T001 target was split into corresponding spans with deterministic existing word alignment. Forty-seven chunks were created at <=14.5 s; frozen aggregation is an unweighted mean, and no invalid chunk is allowed to receive a fabricated score.
+- All 47/47 chunks and 12/12 videos were valid. Model load plus inference took 596.58 s on CUDA; failure rate was 0%.
+
+## Direct benchmark and frozen criterion winners
+
+- **Pronunciation:** MultiPA Accuracy promoted. Raw fixed-scale MAE 0.4553, Pearson 0.4544, Spearman 0.4652. One-dimensional support-constrained LOOCV MAE 0.4912 and balanced accuracy 0.6286 improved the ASR-recognition baseline MAE 0.5869 / balanced accuracy 0.4286. Teacher support remains restricted to {3, 4}.
+- **Fluency:** existing `F0_BASELINE` retained. MultiPA calibration MAE 0.4294 was slightly worse than baseline 0.4204 and its balanced accuracy 0.3750 was worse than 0.6250, so MultiPA Fluency is unstable despite positive raw correlation.
+- **Prosody:** MultiPA Prosody promoted. Raw fixed-scale MAE 0.5272, Pearson 0.4676, Spearman 0.4799. Calibrated LOOCV MAE 0.5881 / within-one-band 0.8333 / Spearman 0.2517 improved the Praat baseline MAE 0.6927 / Spearman 0.1731.
+- **Completeness:** existing deterministic `ASR-assisted Reading Completeness` retained.
+- **Intelligibility:** remains `HUMAN_ONLY / MACHINE_UNSTABLE`; MultiPA was not repurposed to invent this construct.
+- **Overall:** none. Criteria were selected independently.
+
+The scoring behavior and promotion rules were frozen before the MultiPA results were inspected in `p24d_multipa_plan_v1.json`. Raw model output is explicitly labeled `RAW_PRETRAINED_SCORE`; the separate one-dimensional mapped output is `NCKH12_CALIBRATED_SCORE` and cannot leave observed teacher support. N=12, restricted labels and a single AI-assisted rater make this a preliminary competition scorer, not external validation.
+
+Four genuine demo outputs are cached locally with input/chunk/model/plan hashes. No fake number is hard-coded. OOL-LIM was not used because MultiPA passed all validity gates. The original 12 rating artifact remains SHA-256 `6ffc1be2661c8ef3fbcf084c2cb4f83cec175d9f1996f20a444cdc6e13005f62`; the P2.4 frozen winner artifact remains SHA-256 `caad327b1ef6881cc9273dc72bb8c34ab53faf67dd0ed8cde2e21ee5b024a7c6`.
+
+The fixed 18-video holdout was not opened, processed or used. `D064`, `D043`, and `D048` were not rated or used in this sprint and remain reserved for one-time development mini-validation against this frozen scorer. D006 and D023 remain excluded.
+
+**Report:** `MULTIPA_COMPETITION_SCORER_REPORT.md`.
+
+**Next action:** teacher rates only `D064`, `D043`, and `D048`, then P2.5 compares the already-frozen P2.4D configuration once. Do not refit/reselect with those three ratings, open holdout, generate feedback or create an Overall score.
+

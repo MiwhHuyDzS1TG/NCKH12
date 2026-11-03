@@ -1,0 +1,72 @@
+{
+  "version": "P2.4D-MultiPA-plan-v1",
+  "status": "FROZEN_BEFORE_MULTIPA_RESULTS",
+  "candidate": {
+    "name": "MultiPA",
+    "official_repository": "https://github.com/yuwchen/MultiPA",
+    "github_commit": "a8d83ec1d80f9db60e6d32227cb1c562ee5e6022",
+    "huggingface_repository": "yuwchen/multipa",
+    "huggingface_revision": "ff1e3c79bfb1d113d887a0b7b05fe2900c095264",
+    "checkpoint_archive_sha256": "0ed321f7c23bac0ba424b3f37d09be2d4d4ed31e6fc2c1017def0695aa2b90bb",
+    "extracted_checkpoint_sha256": "cc1f02622c763e82f29d7d4d5a073ed45bf9d829013e2c6cc726371fe2d024e8",
+    "pretrained_only": true,
+    "nckh12_neural_training_or_finetuning": false
+  },
+  "frozen_inputs": {
+    "teacher_ratings_sha256": "6ffc1be2661c8ef3fbcf084c2cb4f83cec175d9f1996f20a444cdc6e13005f62",
+    "p24_winner_freeze_sha256": "caad327b1ef6881cc9273dc72bb8c34ab53faf67dd0ed8cde2e21ee5b024a7c6",
+    "target_text_sha256": "a58cbaf8949d47fb1257b828b5dfcb441520b53f414c27cc57ea850bc79924c2",
+    "split_sha256": "cca57f3e7d5ae3918e474f6bf2be05a76b353281633ea190976aeb03911d461b",
+    "rated_development_ids": [
+      "T001-D005", "T001-D007", "T001-D015", "T001-D028",
+      "T001-D039", "T001-D041", "T001-D046", "T001-D059",
+      "T001-D068", "T001-D009", "T001-D010", "T001-D034"
+    ],
+    "reserved_validation_ids": ["T001-D064", "T001-D043", "T001-D048"],
+    "excluded_validation_ids": ["T001-D006", "T001-D023"]
+  },
+  "audio_policy": {
+    "canonical_source": "RAW_COMPLETED_DUET",
+    "model_input": "PHASE1_MASKED_RAW_LEARNER_AUDIO",
+    "cancellation_or_residual_allowed": false
+  },
+  "closed_response": {
+    "target_source": "task_profiles/T001_target_text_v1.json#confirmed_text",
+    "human_confirmation_required": true,
+    "asr_may_supply_target_words": false
+  },
+  "segmentation": {
+    "method": "DETERMINISTIC_GREEDY_AT_EXISTING_ASR_WORD_BOUNDARIES",
+    "maximum_chunk_duration_sec": 14.5,
+    "edge_padding_sec": 0.05,
+    "target_span_method": "MONOTONIC_LCS_MIN_TO_MAX_TARGET_INDEX",
+    "minimum_alignment_confidence": 0.45,
+    "unreliable_chunk_policy": "INVALID_DO_NOT_FABRICATE",
+    "aggregation": "UNWEIGHTED_MEAN_OF_ALL_VALID_CHUNKS",
+    "video_validity": "ALL_PLANNED_CHUNKS_MUST_BE_VALID"
+  },
+  "score_policy": {
+    "raw_scale_mapping_for_mae": "clip(1 + 0.4 * raw_0_to_10, 1, 5)",
+    "calibration": "ONE_DIMENSIONAL_SUPPORT_CONSTRAINED_LOOCV",
+    "binary_support_model": "RIDGE_REGULARIZED_BINARY_LOGISTIC_EXPECTED_SCORE",
+    "multi_level_model": "RIDGE_REGRESSION",
+    "teacher_support_clip": true,
+    "raw_and_calibrated_labels_distinct": true
+  },
+  "selection_policy": {
+    "minimum_valid_videos": 10,
+    "minimum_raw_standard_deviation": 0.05,
+    "binary_promotion": "LOOCV_MAE_GAIN_AT_LEAST_0.05_OR_BALANCED_ACCURACY_GAIN_AT_LEAST_0.10_WITH_MAE_NOT_WORSE_BY_MORE_THAN_0.05",
+    "multi_level_promotion": "LOOCV_MAE_GAIN_AT_LEAST_0.05_OR_SPEARMAN_GAIN_AT_LEAST_0.10_WITH_MAE_NOT_WORSE_BY_MORE_THAN_0.05",
+    "criterion_selection_independent": true,
+    "completeness": "RETAIN_NCKH12_DETERMINISTIC_ASR_ASSISTED",
+    "intelligibility": "HUMAN_ONLY_MACHINE_UNSTABLE",
+    "overall_score": null
+  },
+  "fallback": {
+    "candidate": "cburst/oollim",
+    "allowed_only_if_multipa_valid_videos_below": 10
+  },
+  "holdout_processed": false,
+  "validation_human_ratings_read": false
+}
