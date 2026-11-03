@@ -1,0 +1,540 @@
+{
+  "version": "P2.4-validation-scorability-preflight-v1",
+  "created_at_utc": "2026-11-03T13:30:57+00:00",
+  "status": "PRE_RATING_SCORABILITY_AUDIT_COMPLETE",
+  "ratings_before_audit": "0/5",
+  "original_five_ids": [
+    "T001-D006",
+    "T001-D023",
+    "T001-D064",
+    "T001-D043",
+    "T001-D048"
+  ],
+  "preflight": [
+    {
+      "pair_id": "T001-D006",
+      "p1_status": "AMBER",
+      "scorability": "SCORABLE_AFTER_CANCELLATION",
+      "p1_confidence": 0.85,
+      "reason_codes": [
+        "P1_AMBER",
+        "P1_SCORABLE_AFTER_CANCELLATION",
+        "SPEECH_LEVEL_ACCEPTED_BY_P14C",
+        "NO_BACKGROUND_INTERFERENCE_FLAG",
+        "REFERENCE_PRESENT_IN_SCORING_REGION",
+        "TEACHER_SCORABILITY_CONFIRMATION_REQUIRED",
+        "RAW_COMPLETED_DUET_PROVENANCE",
+        "RAW_CROPPED_AUDIO_READABLE",
+        "RAW_CROPPED_HASH_VERIFIED",
+        "LEARNER_TIMESTAMPS_VALID",
+        "LEARNER_SPEECH_DURATION_PRESENT"
+      ],
+      "teacher_rating_eligible": true,
+      "decision": "KEEP",
+      "machine_feature_values": {
+        "learner_duration_sec": 49.15104166666668,
+        "scorability_confidence": 0.85,
+        "reference_audio_presence_score": 0.7459939980798193,
+        "speech_to_background_db": 13.146796238613241,
+        "speech_level_dbfs_median": -25.77061352130184
+      },
+      "human_validation_score_used": false
+    },
+    {
+      "pair_id": "T001-D023",
+      "p1_status": "AMBER",
+      "scorability": "SCORABLE_AFTER_CANCELLATION",
+      "p1_confidence": 0.85,
+      "reason_codes": [
+        "P1_AMBER",
+        "P1_SCORABLE_AFTER_CANCELLATION",
+        "SPEECH_LEVEL_ACCEPTED_BY_P14C",
+        "NO_BACKGROUND_INTERFERENCE_FLAG",
+        "REFERENCE_PRESENT_IN_SCORING_REGION",
+        "TEACHER_SCORABILITY_CONFIRMATION_REQUIRED",
+        "RAW_COMPLETED_DUET_PROVENANCE",
+        "RAW_CROPPED_AUDIO_READABLE",
+        "RAW_CROPPED_HASH_VERIFIED",
+        "LEARNER_TIMESTAMPS_VALID",
+        "LEARNER_SPEECH_DURATION_PRESENT"
+      ],
+      "teacher_rating_eligible": true,
+      "decision": "KEEP",
+      "machine_feature_values": {
+        "learner_duration_sec": 43.31599999999999,
+        "scorability_confidence": 0.85,
+        "reference_audio_presence_score": 0.5794372950296927,
+        "speech_to_background_db": 14.198313730801218,
+        "speech_level_dbfs_median": -26.53108375153719
+      },
+      "human_validation_score_used": false
+    },
+    {
+      "pair_id": "T001-D064",
+      "p1_status": "AMBER",
+      "scorability": "SCORABLE_CLEAN",
+      "p1_confidence": 0.7,
+      "reason_codes": [
+        "P1_AMBER",
+        "P1_SCORABLE_CLEAN",
+        "SPEECH_LEVEL_ACCEPTED_BY_P14C",
+        "NO_BACKGROUND_INTERFERENCE_FLAG",
+        "NO_REFERENCE_CONTAMINATION",
+        "RAW_COMPLETED_DUET_PROVENANCE",
+        "RAW_CROPPED_AUDIO_READABLE",
+        "RAW_CROPPED_HASH_VERIFIED",
+        "LEARNER_TIMESTAMPS_VALID",
+        "LEARNER_SPEECH_DURATION_PRESENT"
+      ],
+      "teacher_rating_eligible": true,
+      "decision": "KEEP",
+      "machine_feature_values": {
+        "learner_duration_sec": 46.209,
+        "scorability_confidence": 0.7,
+        "reference_audio_presence_score": 0.08218118860698889,
+        "speech_to_background_db": 19.500807060740474,
+        "speech_level_dbfs_median": -28.00550020474806
+      },
+      "human_validation_score_used": false
+    },
+    {
+      "pair_id": "T001-D043",
+      "p1_status": "AMBER",
+      "scorability": "SCORABLE_CLEAN",
+      "p1_confidence": 0.7,
+      "reason_codes": [
+        "P1_AMBER",
+        "P1_SCORABLE_CLEAN",
+        "SPEECH_LEVEL_ACCEPTED_BY_P14C",
+        "NO_BACKGROUND_INTERFERENCE_FLAG",
+        "NO_REFERENCE_CONTAMINATION",
+        "RAW_COMPLETED_DUET_PROVENANCE",
+        "RAW_CROPPED_AUDIO_READABLE",
+        "RAW_CROPPED_HASH_VERIFIED",
+        "LEARNER_TIMESTAMPS_VALID",
+        "LEARNER_SPEECH_DURATION_PRESENT"
+      ],
+      "teacher_rating_eligible": true,
+      "decision": "KEEP",
+      "machine_feature_values": {
+        "learner_duration_sec": 48.05200000000001,
+        "scorability_confidence": 0.7,
+        "reference_audio_presence_score": 0.06295317126734447,
+        "speech_to_background_db": 35.03404347356571,
+        "speech_level_dbfs_median": -33.00602531135502
+      },
+      "human_validation_score_used": false
+    },
+    {
+      "pair_id": "T001-D048",
+      "p1_status": "AMBER",
+      "scorability": "SCORABLE_CLEAN",
+      "p1_confidence": 0.7,
+      "reason_codes": [
+        "P1_AMBER",
+        "P1_SCORABLE_CLEAN",
+        "SPEECH_LEVEL_ACCEPTED_BY_P14C",
+        "NO_BACKGROUND_INTERFERENCE_FLAG",
+        "NO_REFERENCE_CONTAMINATION",
+        "RAW_COMPLETED_DUET_PROVENANCE",
+        "RAW_CROPPED_AUDIO_READABLE",
+        "RAW_CROPPED_HASH_VERIFIED",
+        "LEARNER_TIMESTAMPS_VALID",
+        "LEARNER_SPEECH_DURATION_PRESENT"
+      ],
+      "teacher_rating_eligible": true,
+      "decision": "KEEP",
+      "machine_feature_values": {
+        "learner_duration_sec": 49.08934770889487,
+        "scorability_confidence": 0.7,
+        "reference_audio_presence_score": 0.053169985016316354,
+        "speech_to_background_db": 32.93241850580947,
+        "speech_level_dbfs_median": -33.24449162869141
+      },
+      "human_validation_score_used": false
+    }
+  ],
+  "failed_ids": [],
+  "replacements": [],
+  "eligible_replacement_pool": [],
+  "deterministic_backup_ranking": [],
+  "ranking_policy": "P22C_DETERMINISTIC_MACHINE_FEATURE_COVERAGE_V1",
+  "ranking_feature_specification": [
+    "learner_duration_sec",
+    "scorability_confidence",
+    "reference_audio_presence_score",
+    "speech_to_background_db",
+    "speech_level_dbfs_median"
+  ],
+  "ranking_frozen_before_validation_ratings": true,
+  "selection_uses_human_validation_scores": false,
+  "excluded_candidates": [
+    {
+      "pair_id": "T001-D002",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D004",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D005",
+      "reasons": [
+        "ORIGINAL_12_CALIBRATION_SET",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D006",
+      "reasons": [
+        "ORIGINAL_PRIMARY_CANDIDATE"
+      ]
+    },
+    {
+      "pair_id": "T001-D007",
+      "reasons": [
+        "ORIGINAL_12_CALIBRATION_SET",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D009",
+      "reasons": [
+        "ORIGINAL_12_CALIBRATION_SET",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D010",
+      "reasons": [
+        "ORIGINAL_12_CALIBRATION_SET",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D013",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D015",
+      "reasons": [
+        "ORIGINAL_12_CALIBRATION_SET",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D016",
+      "reasons": [
+        "P1_RED",
+        "P1_UNSCORABLE_ALIGNMENT",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D017",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D020",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D021",
+      "reasons": [
+        "P1_RED",
+        "P1_UNSCORABLE_ALIGNMENT",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D022",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D023",
+      "reasons": [
+        "ORIGINAL_PRIMARY_CANDIDATE"
+      ]
+    },
+    {
+      "pair_id": "T001-D026",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D028",
+      "reasons": [
+        "ORIGINAL_12_CALIBRATION_SET",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D029",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D030",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D032",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D034",
+      "reasons": [
+        "ORIGINAL_12_CALIBRATION_SET",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D035",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D036",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D037",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D038",
+      "reasons": [
+        "P1_RED",
+        "P1_UNSCORABLE_ALIGNMENT",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D039",
+      "reasons": [
+        "ORIGINAL_12_CALIBRATION_SET",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D040",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D041",
+      "reasons": [
+        "ORIGINAL_12_CALIBRATION_SET",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D042",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D043",
+      "reasons": [
+        "ORIGINAL_PRIMARY_CANDIDATE"
+      ]
+    },
+    {
+      "pair_id": "T001-D044",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D045",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D046",
+      "reasons": [
+        "ORIGINAL_12_CALIBRATION_SET",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D048",
+      "reasons": [
+        "ORIGINAL_PRIMARY_CANDIDATE"
+      ]
+    },
+    {
+      "pair_id": "T001-D049",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D051",
+      "reasons": [
+        "P1_RED",
+        "P1_UNSCORABLE_ALIGNMENT",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D052",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D053",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D054",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D056",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D057",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D059",
+      "reasons": [
+        "ORIGINAL_12_CALIBRATION_SET",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D060",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D061",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D062",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D063",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D064",
+      "reasons": [
+        "ORIGINAL_PRIMARY_CANDIDATE"
+      ]
+    },
+    {
+      "pair_id": "T001-D065",
+      "reasons": [
+        "P1_RED",
+        "P1_UNSCORABLE_ALIGNMENT",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D066",
+      "reasons": [
+        "P1_REVIEW_REQUIRED",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    },
+    {
+      "pair_id": "T001-D068",
+      "reasons": [
+        "ORIGINAL_12_CALIBRATION_SET",
+        "NO_FROZEN_RAW_CROPPED_MACHINE_INPUT"
+      ]
+    }
+  ],
+  "final_five_ids": [
+    "T001-D006",
+    "T001-D023",
+    "T001-D064",
+    "T001-D043",
+    "T001-D048"
+  ],
+  "all_final_items_scorable": true,
+  "p24_frozen_plan_sha256": "28b2e4ef7c17214c202e09bcc1a5c01c7cecc309a81881c86dec21b81886836a",
+  "p24_model_selection_unchanged": true,
+  "original_12_ratings_sha256": "6ffc1be2661c8ef3fbcf084c2cb4f83cec175d9f1996f20a444cdc6e13005f62",
+  "split_proof": {
+    "all_final_in_development": true,
+    "final_holdout_intersection": [],
+    "holdout_count_membership_only": 18,
+    "holdout_media_opened": false
+  }
+}

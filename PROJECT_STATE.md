@@ -1413,3 +1413,17 @@ A separate, machine-blind teacher workflow is ready for the five frozen developm
 
 **Next separate step after 5/5:** P2.5 evaluates the already-frozen P2.4 winners exactly once. Do not use the five ratings to reselect models.
 
+# P2.4 VALIDATION QUEUE — PRE-RATING SCORABILITY AUDIT (2026-11-03)
+
+The corrective audit ran before any development-validation rating was entered. The private queue remained **0/5**, every Fluency/Pronunciation/Intelligibility/Prosody field remained null, and the original five IDs were evaluated only with pre-existing development-split, Phase-1, raw-audio-quality and frozen P2.4 input metadata.
+
+- `T001-D006`: AMBER / `SCORABLE_AFTER_CANCELLATION` — **KEEP**. P1.4c confidence 0.85; speech level accepted; no background-interference flag; valid learner intervals; readable/hash-verified RAW_CROPPED input; 49.15 s measured learner speech. Reference audio is flagged in the scoring region, so the existing teacher SCORABLE confirmation remains required.
+- `T001-D023`: AMBER / `SCORABLE_AFTER_CANCELLATION` — **KEEP**. P1.4c confidence 0.85; speech level accepted; no background-interference flag; valid learner intervals; readable/hash-verified RAW_CROPPED input; 43.32 s measured learner speech. Reference audio is flagged in the scoring region, so the existing teacher SCORABLE confirmation remains required.
+- `T001-D064`: AMBER / `SCORABLE_CLEAN` — **KEEP**. No reference contamination or background-interference flag; valid learner intervals; readable/hash-verified RAW_CROPPED input; 46.21 s measured learner speech.
+- `T001-D043`: AMBER / `SCORABLE_CLEAN` — **KEEP**. No reference contamination or background-interference flag; valid learner intervals; readable/hash-verified RAW_CROPPED input; 48.05 s measured learner speech.
+- `T001-D048`: AMBER / `SCORABLE_CLEAN` — **KEEP**. No reference contamination or background-interference flag; valid learner intervals; readable/hash-verified RAW_CROPPED input; 49.09 s measured learner speech.
+
+No item met `REPLACE_TECHNICAL_FAILURE`; the final queue therefore remains `T001-D006`, `T001-D023`, `T001-D064`, `T001-D043`, `T001-D048`. The deterministic backup policy was frozen in `p24_validation_replacement_manifest_v1.json` before teacher rating. After excluding the original five, the original 12 calibration IDs, RED/`REVIEW_REQUIRED` items and items without frozen RAW_CROPPED machine inputs, no safe replacement remained; the frozen backup ranking is intentionally empty rather than hand-picked from ineligible data.
+
+The teacher workflow now requires this frozen preflight manifest before it can initialize or save. The original 12 ratings remain byte-identical at SHA-256 `6ffc1be2661c8ef3fbcf084c2cb4f83cec175d9f1996f20a444cdc6e13005f62`. The P2.4 plan remains byte-identical at SHA-256 `28b2e4ef7c17214c202e09bcc1a5c01c7cecc309a81881c86dec21b81886836a`; frozen winners and selection were not changed. Holdout membership was used only as an exclusion set; no holdout media or outcome was opened, processed or used. P2.5, calibration and teacher rating were not started.
+

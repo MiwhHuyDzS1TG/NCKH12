@@ -5,6 +5,12 @@ import hashlib
 import json
 from pathlib import Path
 
+from speaking_evidence.p24_validation_preflight import (
+    MANIFEST_NAME,
+    VERSION as PREFLIGHT_VERSION,
+    validate_replacement_manifest,
+)
+
 from speaking_evidence.p22 import (
     LABELS,
     RATING_IDS,
@@ -49,7 +55,19 @@ def _assert_frozen_inputs(root: Path) -> dict:
             or winner.get("validation_human_ratings_read") is not False
             or winner.get("holdout_processed") is not False):
         raise ValueError("P2.4 winner freeze is not valid for development validation")
-    return {"winner_sha256": _sha256(winner_path), "winner": winner}
+    preflight_path = root / MANIFEST_NAME
+    if not preflight_path.is_file():
+        raise ValueError("Pre-rating validation scorability preflight is missing")
+    preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
+    validate_replacement_manifest(preflight)
+    if tuple(preflight["final_five_ids"]) != VALIDATION_IDS:
+        raise ValueError("Validation queue does not match the frozen scorability preflight")
+    return {
+        "winner_sha256": _sha256(winner_path),
+        "winner": winner,
+        "preflight_sha256": _sha256(preflight_path),
+        "preflight": preflight,
+    }
 
 
 def validate_validation_rating_artifact(payload: dict) -> None:
@@ -68,6 +86,12 @@ def validate_validation_rating_artifact(payload: dict) -> None:
         raise ValueError("Validation ratings must not reselect P2.4 models")
     if payload.get("automatic_calibration_after_completion") is not False:
         raise ValueError("Validation completion must not trigger calibration")
+    preflight = payload.get("pre_rating_scorability_preflight")
+    if (not isinstance(preflight, dict)
+            or preflight.get("version") != PREFLIGHT_VERSION
+            or tuple(preflight.get("final_five_ids", [])) != VALIDATION_IDS
+            or preflight.get("completed_before_rating") is not True):
+        raise ValueError("Validation artifact is not bound to the frozen scorability preflight")
     for item in payload["items"]:
         if item.get("split") != "DEVELOPMENT_VALIDATION":
             raise ValueError("Validation item has the wrong split")
@@ -181,6 +205,14 @@ def initialize_validation_rating_artifact(root: Path, destination: Path | None =
         "p25_started": False,
         "holdout_used": False,
         "original_12_ratings_sha256": ORIGINAL_RATINGS_SHA256,
+        "pre_rating_scorability_preflight": {
+            "version": PREFLIGHT_VERSION,
+            "manifest_ref": MANIFEST_NAME,
+            "manifest_sha256": frozen["preflight_sha256"],
+            "completed_before_rating": True,
+            "technical_replacements": frozen["preflight"]["replacements"],
+            "final_five_ids": frozen["preflight"]["final_five_ids"],
+        },
         "items": items,
         "history": [],
     }

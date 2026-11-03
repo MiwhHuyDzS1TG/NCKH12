@@ -1,6 +1,7 @@
 import hashlib
 import json
 import shutil
+import wave
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,13 @@ from speaking_evidence.p24_validation import (
     initialize_validation_rating_artifact,
     rating_progress,
     save_validation_rating,
+)
+from speaking_evidence.p24_validation_preflight import (
+    MANIFEST_NAME,
+    ORIGINAL_IDS,
+    VERSION as PREFLIGHT_VERSION,
+    build_replacement_manifest,
+    validate_replacement_manifest,
 )
 
 
@@ -36,6 +44,8 @@ def _private_fixture(tmp_path: Path) -> tuple[Path, Path]:
         "assessment_runs/T001_p24_tournament_v1/validation_inputs_summary.json",
         "cohort_runs/T001_p14/data_split_v2.json",
         "cohort_runs/T001_p14/development_manifest_v3.json",
+        MANIFEST_NAME,
+        "human_ground_truth/p24_validation_v1/development_validation_ratings_v1.json",
     )
     for relative in copies:
         source, destination = Path(relative), tmp_path / relative
@@ -47,8 +57,17 @@ def _private_fixture(tmp_path: Path) -> tuple[Path, Path]:
     for item in summary["items"]:
         audio = tmp_path / "assessment_runs/T001_p24_tournament_v1" / item["model_input_ref"]
         audio.parent.mkdir(parents=True, exist_ok=True)
-        audio.write_bytes(b"fixture raw-cropped audio")
+        with wave.open(str(audio), "wb") as handle:
+            handle.setnchannels(1)
+            handle.setsampwidth(2)
+            handle.setframerate(16_000)
+            handle.writeframes(b"\x00\x00" * 160)
+        item["model_input_sha256"] = _sha(audio)
+    (tmp_path / "assessment_runs/T001_p24_tournament_v1/validation_inputs_summary.json").write_text(
+        json.dumps(summary), encoding="utf-8"
+    )
     artifact = tmp_path / "human_ground_truth/p24_validation_v1/development_validation_ratings_v1.json"
+    artifact.unlink()
     return tmp_path, artifact
 
 
@@ -57,6 +76,85 @@ def test_validation_queue_ids_are_exact_and_separate_from_calibration():
         "T001-D006", "T001-D023", "T001-D064", "T001-D043", "T001-D048"
     )
     assert set(VALIDATION_IDS).isdisjoint(RATING_IDS)
+
+
+def test_frozen_preflight_keeps_all_five_scorable_amber_items():
+    manifest = json.loads(Path(MANIFEST_NAME).read_text(encoding="utf-8"))
+    validate_replacement_manifest(manifest)
+    assert manifest["version"] == PREFLIGHT_VERSION
+    assert tuple(manifest["original_five_ids"]) == ORIGINAL_IDS == VALIDATION_IDS
+    assert manifest["ratings_before_audit"] == "0/5"
+    assert manifest["failed_ids"] == []
+    assert manifest["replacements"] == []
+    assert manifest["eligible_replacement_pool"] == []
+    assert manifest["deterministic_backup_ranking"] == []
+    assert all(item["p1_status"] == "AMBER" for item in manifest["preflight"])
+    assert all(item["teacher_rating_eligible"] is True for item in manifest["preflight"])
+    assert all(item["decision"] == "KEEP" for item in manifest["preflight"])
+    assert all(item["human_validation_score_used"] is False for item in manifest["preflight"])
+    assert manifest["selection_uses_human_validation_scores"] is False
+    assert manifest["split_proof"]["final_holdout_intersection"] == []
+
+
+@pytest.mark.skipif(not PRIVATE_REQUIRED, reason="private workflow artifacts are not distributed")
+def test_preflight_is_frozen_and_refuses_to_run_after_any_rating(tmp_path):
+    root, artifact = _private_fixture(tmp_path)
+    source_rating = Path(
+        "human_ground_truth/p24_validation_v1/development_validation_ratings_v1.json"
+    )
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source_rating, artifact)
+    destination = root / "fresh_preflight.json"
+    first = build_replacement_manifest(root, destination)
+    frozen_bytes = destination.read_bytes()
+    second = build_replacement_manifest(root, destination)
+    assert second == first
+    assert destination.read_bytes() == frozen_bytes
+    destination.unlink()
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    payload["items"][0]["fluency"] = 4
+    artifact.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="has begun"):
+        build_replacement_manifest(root, destination)
+
+
+def test_preflight_validator_rejects_red_or_original_rating_overlap():
+    payload = json.loads(Path(MANIFEST_NAME).read_text(encoding="utf-8"))
+    payload["final_five_ids"][0] = RATING_IDS[0]
+    with pytest.raises(ValueError, match="overlaps"):
+        validate_replacement_manifest(payload)
+    payload = json.loads(Path(MANIFEST_NAME).read_text(encoding="utf-8"))
+    payload["preflight"][0]["p1_status"] = "RED"
+    with pytest.raises(ValueError, match="not objectively scorable"):
+        validate_replacement_manifest(payload)
+
+
+def test_technical_replacement_provenance_must_use_frozen_ranking():
+    payload = json.loads(Path(MANIFEST_NAME).read_text(encoding="utf-8"))
+    failed, replacement = "T001-D006", "T001-D002"
+    item = payload["preflight"][0]
+    item.update({
+        "p1_status": "RED",
+        "scorability": "UNSCORABLE_ALIGNMENT",
+        "teacher_rating_eligible": False,
+        "decision": "REPLACE_TECHNICAL_FAILURE",
+    })
+    payload["failed_ids"] = [failed]
+    payload["replacements"] = [{
+        "original_id": failed,
+        "replacement_id": replacement,
+        "reason": "PRE_RATING_TECHNICAL_ELIGIBILITY_REPLACEMENT",
+    }]
+    payload["deterministic_backup_ranking"] = [{
+        "pair_id": replacement,
+        "rank": 1,
+        "human_validation_score_used": False,
+    }]
+    payload["final_five_ids"][0] = replacement
+    validate_replacement_manifest(payload)
+    payload["replacements"][0]["replacement_id"] = "T001-D030"
+    with pytest.raises(ValueError, match="frozen backup ranking"):
+        validate_replacement_manifest(payload)
 
 
 @pytest.mark.skipif(not PRIVATE_REQUIRED, reason="private workflow artifacts are not distributed")
