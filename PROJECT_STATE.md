@@ -1427,3 +1427,11 @@ No item met `REPLACE_TECHNICAL_FAILURE`; the final queue therefore remains `T001
 
 The teacher workflow now requires this frozen preflight manifest before it can initialize or save. The original 12 ratings remain byte-identical at SHA-256 `6ffc1be2661c8ef3fbcf084c2cb4f83cec175d9f1996f20a444cdc6e13005f62`. The P2.4 plan remains byte-identical at SHA-256 `28b2e4ef7c17214c202e09bcc1a5c01c7cecc309a81881c86dec21b81886836a`; frozen winners and selection were not changed. Holdout membership was used only as an exclusion set; no holdout media or outcome was opened, processed or used. P2.5, calibration and teacher rating were not started.
 
+## Manual scorability correction — pool exhausted (2026-11-03)
+
+Subsequent manual technical review overrode the earlier KEEP decisions for `T001-D006` and `T001-D023`. Both are now `NOT_SCORABLE / EXCLUDE_FROM_VALIDATION` and have been removed from the teacher queue. Their existing P1 evidence is preserved exactly in `p24_validation_replacement_manifest_v2.json`: AMBER, `SCORABLE_AFTER_CANCELLATION`, quality reason codes `POSSIBLE_TRUE_OVERLAP` and `UNUSUAL_DURATION`, audible-template evidence in the scoring region, and weak/inconsistent visual alignment with reliable-audio fallback. They will not be rehabilitated or rated.
+
+The already-frozen deterministic backup ranking contained no eligible candidate. After excluding the original 12 calibration IDs and the fixed holdout, every other development candidate was either P1 `REVIEW_REQUIRED` without a frozen RAW_CROPPED validation input or RED/`UNSCORABLE_ALIGNMENT`. The scorability threshold was not lowered and no candidate was selected using teacher scores. Therefore no replacement exists for either exclusion.
+
+The retained eligible IDs are `T001-D064`, `T001-D043`, and `T001-D048`; all three remain `SCORABLE_CLEAN`. Because only three of the required five safe items exist, the private queue is `BLOCKED_INSUFFICIENT_SCORABLE_DEVELOPMENT_POOL`, reports progress **0/5**, contains only the three retained IDs, and keeps every criterion null. The teacher-validation UI displays the blocked state and exposes no rating controls. The original 12 ratings, frozen P2.4 plan and frozen winners are unchanged; holdout media/outcomes remain untouched. Teacher rating, P2.5 and calibration must not start from this incomplete queue.
+

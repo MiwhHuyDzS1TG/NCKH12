@@ -1,0 +1,103 @@
+{
+  "version": "P2.4-validation-scorability-correction-v2",
+  "created_at_utc": "2026-11-03T13:46:44+00:00",
+  "status": "ELIGIBLE_DEVELOPMENT_POOL_EXHAUSTED",
+  "target_count": 5,
+  "original_five_ids": [
+    "T001-D006",
+    "T001-D023",
+    "T001-D064",
+    "T001-D043",
+    "T001-D048"
+  ],
+  "technical_exclusions": [
+    {
+      "pair_id": "T001-D006",
+      "decision": "NOT_SCORABLE / EXCLUDE_FROM_VALIDATION",
+      "replacement_decision": "REPLACE_TECHNICAL_FAILURE",
+      "decision_source": "MANUAL_TECHNICAL_REVIEW_CONFIRMED_BY_RESEARCHER",
+      "p1_status": "AMBER",
+      "p1_scorability": "SCORABLE_AFTER_CANCELLATION",
+      "quality_gate_reason_codes": [
+        "POSSIBLE_TRUE_OVERLAP",
+        "UNUSUAL_DURATION"
+      ],
+      "p1_scorability_reasons": [
+        "Reference audio was reduced by a reliable cancellation backend"
+      ],
+      "p1_audio_presence_reasons": [
+        "Multiple aligned audio features indicate audible template speech"
+      ],
+      "p1_warnings": [
+        "Visual template alignment is weak or inconsistent",
+        "Visual alignment failed; used reliable audio fallback"
+      ],
+      "reference_contamination_scope": "SCORING_REGION",
+      "audio_state": "REFERENCE_PRESENT",
+      "low_speech_level": false,
+      "background_interference": false
+    },
+    {
+      "pair_id": "T001-D023",
+      "decision": "NOT_SCORABLE / EXCLUDE_FROM_VALIDATION",
+      "replacement_decision": "REPLACE_TECHNICAL_FAILURE",
+      "decision_source": "MANUAL_TECHNICAL_REVIEW_CONFIRMED_BY_RESEARCHER",
+      "p1_status": "AMBER",
+      "p1_scorability": "SCORABLE_AFTER_CANCELLATION",
+      "quality_gate_reason_codes": [
+        "POSSIBLE_TRUE_OVERLAP",
+        "UNUSUAL_DURATION"
+      ],
+      "p1_scorability_reasons": [
+        "Reference audio was reduced by a reliable cancellation backend"
+      ],
+      "p1_audio_presence_reasons": [
+        "Multiple aligned audio features indicate audible template speech"
+      ],
+      "p1_warnings": [
+        "Visual template alignment is weak or inconsistent",
+        "Visual alignment failed; used reliable audio fallback"
+      ],
+      "reference_contamination_scope": "SCORING_REGION",
+      "audio_state": "REFERENCE_PRESENT",
+      "low_speech_level": false,
+      "background_interference": false
+    }
+  ],
+  "excluded_ids": [
+    "T001-D006",
+    "T001-D023"
+  ],
+  "frozen_backup_ranking_source": "p24_validation_replacement_manifest_v1.json",
+  "frozen_backup_ranking_sha256": "18d97b16599d7471b146f80dc447cc7579bb70e3513246d997ff2b66cc130f45",
+  "deterministic_backup_ranking": [],
+  "eligible_replacement_pool": [],
+  "replacements": [],
+  "replacement_pool_exhausted": true,
+  "replacement_threshold_lowered": false,
+  "selection_uses_teacher_ratings": false,
+  "retained_scorable_ids": [
+    "T001-D064",
+    "T001-D043",
+    "T001-D048"
+  ],
+  "final_queue_ids": [
+    "T001-D064",
+    "T001-D043",
+    "T001-D048"
+  ],
+  "final_queue_count": 3,
+  "five_item_queue_complete": false,
+  "all_retained_items_scorable": true,
+  "all_final_items_scorable": false,
+  "validation_progress": "0/5",
+  "p24_frozen_plan_sha256": "28b2e4ef7c17214c202e09bcc1a5c01c7cecc309a81881c86dec21b81886836a",
+  "p24_model_selection_unchanged": true,
+  "original_12_ratings_sha256": "6ffc1be2661c8ef3fbcf084c2cb4f83cec175d9f1996f20a444cdc6e13005f62",
+  "split_proof": {
+    "all_retained_in_development": true,
+    "retained_holdout_intersection": [],
+    "holdout_count_membership_only": 18,
+    "holdout_media_opened": false
+  }
+}

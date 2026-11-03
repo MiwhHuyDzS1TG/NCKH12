@@ -1069,6 +1069,17 @@ def _teacher_validation_dashboard() -> None:
         "Chỉ chấm phần học sinh nói. Không có điểm máy, dự đoán hay kết quả P2.4 "
         "được hiển thị trên trang này."
     )
+    if payload.get("status") == "BLOCKED_INSUFFICIENT_SCORABLE_DEVELOPMENT_POOL":
+        st.error(
+            "VALIDATION QUEUE BLOCKED: chỉ có 3/5 video development đủ điều kiện "
+            "SCORABLE. Không thể bắt đầu chấm và không hạ chuẩn để chọn video thay thế."
+        )
+        st.markdown("**Video SCORABLE còn lại:** T001-D064, T001-D043, T001-D048")
+        st.info(
+            "T001-D006 và T001-D023 đã bị loại khỏi validation. Pool development hợp lệ "
+            "đã cạn; hàng chờ vẫn ở 0/5."
+        )
+        return
     with st.expander("Hướng dẫn 4 tiêu chí", expanded=True):
         st.markdown("""
 **Fluency — How smoothly and continuously does the learner speak?**

@@ -5,10 +5,15 @@ import hashlib
 import json
 from pathlib import Path
 
-from speaking_evidence.p24_validation_preflight import (
+from speaking_evidence.p24_validation_correction import (
+    FINAL_IDS,
     MANIFEST_NAME,
+    TARGET_COUNT,
     VERSION as PREFLIGHT_VERSION,
-    validate_replacement_manifest,
+    validate_corrected_manifest,
+)
+from speaking_evidence.p24_validation_preflight import (
+    ORIGINAL_IDS,
 )
 
 from speaking_evidence.p22 import (
@@ -16,19 +21,12 @@ from speaking_evidence.p22 import (
     RATING_IDS,
     _write_rating_atomically_with_snapshot,
     now_utc,
-    save_rating,
 )
 
 
 VERSION = "P2.4-development-validation-ratings-v1"
 RATING_SCHEMA_VERSION = "P24-development-validation-four-criterion-v1"
-VALIDATION_IDS = (
-    "T001-D006",
-    "T001-D023",
-    "T001-D064",
-    "T001-D043",
-    "T001-D048",
-)
+VALIDATION_IDS = FINAL_IDS
 PLAN_SHA256 = "28b2e4ef7c17214c202e09bcc1a5c01c7cecc309a81881c86dec21b81886836a"
 ORIGINAL_RATINGS_SHA256 = "6ffc1be2661c8ef3fbcf084c2cb4f83cec175d9f1996f20a444cdc6e13005f62"
 
@@ -51,7 +49,7 @@ def _assert_frozen_inputs(root: Path) -> dict:
         raise ValueError("Original 12-rating artifact changed")
     winner = json.loads(winner_path.read_text(encoding="utf-8"))
     if (winner.get("status") != "MODEL_SELECTION_FROZEN_BEFORE_VALIDATION_RATINGS"
-            or tuple(winner.get("development_validation_ids", [])) != VALIDATION_IDS
+            or tuple(winner.get("development_validation_ids", [])) != ORIGINAL_IDS
             or winner.get("validation_human_ratings_read") is not False
             or winner.get("holdout_processed") is not False):
         raise ValueError("P2.4 winner freeze is not valid for development validation")
@@ -59,8 +57,8 @@ def _assert_frozen_inputs(root: Path) -> dict:
     if not preflight_path.is_file():
         raise ValueError("Pre-rating validation scorability preflight is missing")
     preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
-    validate_replacement_manifest(preflight)
-    if tuple(preflight["final_five_ids"]) != VALIDATION_IDS:
+    validate_corrected_manifest(preflight)
+    if tuple(preflight["final_queue_ids"]) != VALIDATION_IDS:
         raise ValueError("Validation queue does not match the frozen scorability preflight")
     return {
         "winner_sha256": _sha256(winner_path),
@@ -89,9 +87,13 @@ def validate_validation_rating_artifact(payload: dict) -> None:
     preflight = payload.get("pre_rating_scorability_preflight")
     if (not isinstance(preflight, dict)
             or preflight.get("version") != PREFLIGHT_VERSION
-            or tuple(preflight.get("final_five_ids", [])) != VALIDATION_IDS
-            or preflight.get("completed_before_rating") is not True):
+            or tuple(preflight.get("final_queue_ids", [])) != VALIDATION_IDS
+            or preflight.get("completed_before_criterion_rating") is not True):
         raise ValueError("Validation artifact is not bound to the frozen scorability preflight")
+    if payload.get("status") != "BLOCKED_INSUFFICIENT_SCORABLE_DEVELOPMENT_POOL":
+        raise ValueError("Teacher validation must remain blocked until five scorable items exist")
+    if payload.get("target_count") != TARGET_COUNT or payload.get("eligible_count") != len(VALIDATION_IDS):
+        raise ValueError("Corrected validation queue counts are inconsistent")
     for item in payload["items"]:
         if item.get("split") != "DEVELOPMENT_VALIDATION":
             raise ValueError("Validation item has the wrong split")
@@ -144,8 +146,8 @@ def initialize_validation_rating_artifact(root: Path, destination: Path | None =
     inputs = json.loads((evidence_root / "validation_inputs_summary.json").read_text(
         encoding="utf-8"))
     input_by_id = {item["pair_id"]: item for item in inputs["items"]}
-    if tuple(item["pair_id"] for item in inputs["items"]) != VALIDATION_IDS:
-        raise ValueError("P2.4 machine-input queue does not match the frozen validation IDs")
+    if tuple(item["pair_id"] for item in inputs["items"]) != ORIGINAL_IDS:
+        raise ValueError("P2.4 machine-input queue does not match the original frozen IDs")
 
     items = []
     for pair_id in VALIDATION_IDS:
@@ -187,10 +189,12 @@ def initialize_validation_rating_artifact(root: Path, destination: Path | None =
     payload = {
         "version": VERSION,
         "rating_schema_version": RATING_SCHEMA_VERSION,
-        "status": "DEVELOPMENT_VALIDATION_RATING_QUEUE",
+        "status": "BLOCKED_INSUFFICIENT_SCORABLE_DEVELOPMENT_POOL",
         "created_at_utc": now_utc(),
         "split": "DEVELOPMENT_VALIDATION",
         "queue_ids": list(VALIDATION_IDS),
+        "target_count": TARGET_COUNT,
+        "eligible_count": len(VALIDATION_IDS),
         "criteria": list(LABELS),
         "audio_source_type": "RAW_CROPPED",
         "rater_role": "TEACHER_RESEARCH_RATER",
@@ -210,9 +214,11 @@ def initialize_validation_rating_artifact(root: Path, destination: Path | None =
             "manifest_ref": MANIFEST_NAME,
             "manifest_sha256": frozen["preflight_sha256"],
             "completed_before_rating": True,
-            "technical_replacements": frozen["preflight"]["replacements"],
-            "final_five_ids": frozen["preflight"]["final_five_ids"],
+            "completed_before_criterion_rating": True,
+            "replacement_pool_exhausted": True,
+            "final_queue_ids": frozen["preflight"]["final_queue_ids"],
         },
+        "technical_exclusions": frozen["preflight"]["technical_exclusions"],
         "items": items,
         "history": [],
     }
@@ -223,35 +229,12 @@ def initialize_validation_rating_artifact(root: Path, destination: Path | None =
 
 def save_validation_rating(path: Path, root: Path, pair_id: str, scorability: str,
                            scores: dict, pronunciation_examples: str = "") -> dict:
-    """Persist one human decision while protecting P2.4 and the original 12 ratings."""
+    """Refuse rating while the corrected queue has only three eligible items."""
     if pair_id not in VALIDATION_IDS:
         raise ValueError("Only frozen P2.4 development-validation IDs may be rated")
-    frozen_before = _assert_frozen_inputs(root)
-    winner_path = root / "assessment_runs/T001_p24_tournament_v1/winner_freeze_v1.json"
-    original_path = root / "human_ground_truth/p22a_v1/ratings_v2.json"
-    winner_hash, original_hash = _sha256(winner_path), _sha256(original_path)
-    saved = save_rating(
-        path, pair_id, scorability, scores, "", True,
-        pronunciation_examples=pronunciation_examples,
-        rater_metadata={
-            "rater_role": "TEACHER_RESEARCH_RATER",
-            "human_reviewed": True,
-            "ai_assistance_used": True,
-            "rating_schema_version": RATING_SCHEMA_VERSION,
-            "audio_source_type": "RAW_CROPPED",
-            "split": "DEVELOPMENT_VALIDATION",
-            "p24_frozen_plan_sha256": PLAN_SHA256,
-        },
-    )
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    validate_validation_rating_artifact(payload)
-    if (_sha256(winner_path) != winner_hash
-            or _sha256(original_path) != original_hash
-            or frozen_before["winner_sha256"] != winner_hash):
-        raise RuntimeError("Protected P2.4/original-rating artifact changed during validation save")
-    return saved
+    raise ValueError("Teacher validation is blocked: only 3/5 scorable development items exist")
 
 
 def rating_progress(payload: dict) -> tuple[int, int]:
     validate_validation_rating_artifact(payload)
-    return sum(item.get("human_confirmed") is True for item in payload["items"]), len(VALIDATION_IDS)
+    return sum(item.get("human_confirmed") is True for item in payload["items"]), TARGET_COUNT

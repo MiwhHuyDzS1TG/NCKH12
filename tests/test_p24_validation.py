@@ -17,11 +17,17 @@ from speaking_evidence.p24_validation import (
     rating_progress,
     save_validation_rating,
 )
+from speaking_evidence.p24_validation_correction import (
+    FINAL_IDS,
+    FORCED_EXCLUSIONS,
+    MANIFEST_NAME as CORRECTED_MANIFEST_NAME,
+    VERSION as CORRECTED_VERSION,
+    build_corrected_manifest,
+    validate_corrected_manifest,
+)
 from speaking_evidence.p24_validation_preflight import (
-    MANIFEST_NAME,
+    MANIFEST_NAME as V1_MANIFEST_NAME,
     ORIGINAL_IDS,
-    VERSION as PREFLIGHT_VERSION,
-    build_replacement_manifest,
     validate_replacement_manifest,
 )
 
@@ -40,20 +46,20 @@ def _private_fixture(tmp_path: Path) -> tuple[Path, Path]:
     copies = (
         "pretrained_model_tournament_v1.json",
         "human_ground_truth/p22a_v1/ratings_v2.json",
+        "human_ground_truth/p24_validation_v1/development_validation_ratings_v1.json",
         "assessment_runs/T001_p24_tournament_v1/winner_freeze_v1.json",
         "assessment_runs/T001_p24_tournament_v1/validation_inputs_summary.json",
         "cohort_runs/T001_p14/data_split_v2.json",
         "cohort_runs/T001_p14/development_manifest_v3.json",
-        MANIFEST_NAME,
-        "human_ground_truth/p24_validation_v1/development_validation_ratings_v1.json",
+        V1_MANIFEST_NAME,
+        CORRECTED_MANIFEST_NAME,
     )
     for relative in copies:
         source, destination = Path(relative), tmp_path / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
-    summary = json.loads((tmp_path /
-        "assessment_runs/T001_p24_tournament_v1/validation_inputs_summary.json").read_text(
-            encoding="utf-8"))
+    summary_path = tmp_path / "assessment_runs/T001_p24_tournament_v1/validation_inputs_summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
     for item in summary["items"]:
         audio = tmp_path / "assessment_runs/T001_p24_tournament_v1" / item["model_input_ref"]
         audio.parent.mkdir(parents=True, exist_ok=True)
@@ -63,222 +69,148 @@ def _private_fixture(tmp_path: Path) -> tuple[Path, Path]:
             handle.setframerate(16_000)
             handle.writeframes(b"\x00\x00" * 160)
         item["model_input_sha256"] = _sha(audio)
-    (tmp_path / "assessment_runs/T001_p24_tournament_v1/validation_inputs_summary.json").write_text(
-        json.dumps(summary), encoding="utf-8"
-    )
+    summary_path.write_text(json.dumps(summary), encoding="utf-8")
     artifact = tmp_path / "human_ground_truth/p24_validation_v1/development_validation_ratings_v1.json"
     artifact.unlink()
     return tmp_path, artifact
 
 
-def test_validation_queue_ids_are_exact_and_separate_from_calibration():
-    assert VALIDATION_IDS == (
+def test_corrected_queue_excludes_manual_failures_and_original_calibration_set():
+    assert ORIGINAL_IDS == (
         "T001-D006", "T001-D023", "T001-D064", "T001-D043", "T001-D048"
     )
+    assert FORCED_EXCLUSIONS == ("T001-D006", "T001-D023")
+    assert VALIDATION_IDS == FINAL_IDS == ("T001-D064", "T001-D043", "T001-D048")
     assert set(VALIDATION_IDS).isdisjoint(RATING_IDS)
 
 
-def test_frozen_preflight_keeps_all_five_scorable_amber_items():
-    manifest = json.loads(Path(MANIFEST_NAME).read_text(encoding="utf-8"))
+def test_v1_backup_ranking_was_frozen_empty_before_manual_correction():
+    manifest = json.loads(Path(V1_MANIFEST_NAME).read_text(encoding="utf-8"))
     validate_replacement_manifest(manifest)
-    assert manifest["version"] == PREFLIGHT_VERSION
-    assert tuple(manifest["original_five_ids"]) == ORIGINAL_IDS == VALIDATION_IDS
     assert manifest["ratings_before_audit"] == "0/5"
-    assert manifest["failed_ids"] == []
-    assert manifest["replacements"] == []
-    assert manifest["eligible_replacement_pool"] == []
     assert manifest["deterministic_backup_ranking"] == []
-    assert all(item["p1_status"] == "AMBER" for item in manifest["preflight"])
-    assert all(item["teacher_rating_eligible"] is True for item in manifest["preflight"])
-    assert all(item["decision"] == "KEEP" for item in manifest["preflight"])
-    assert all(item["human_validation_score_used"] is False for item in manifest["preflight"])
+    assert manifest["eligible_replacement_pool"] == []
     assert manifest["selection_uses_human_validation_scores"] is False
     assert manifest["split_proof"]["final_holdout_intersection"] == []
 
 
+def test_corrected_manifest_preserves_exact_p1_reasons_and_does_not_lower_threshold():
+    manifest = json.loads(Path(CORRECTED_MANIFEST_NAME).read_text(encoding="utf-8"))
+    validate_corrected_manifest(manifest)
+    assert manifest["version"] == CORRECTED_VERSION
+    assert tuple(manifest["excluded_ids"]) == FORCED_EXCLUSIONS
+    assert tuple(manifest["final_queue_ids"]) == FINAL_IDS
+    assert manifest["deterministic_backup_ranking"] == []
+    assert manifest["eligible_replacement_pool"] == []
+    assert manifest["replacements"] == []
+    assert manifest["replacement_pool_exhausted"] is True
+    assert manifest["replacement_threshold_lowered"] is False
+    assert manifest["selection_uses_teacher_ratings"] is False
+    assert manifest["validation_progress"] == "0/5"
+    assert manifest["five_item_queue_complete"] is False
+    assert manifest["all_retained_items_scorable"] is True
+    assert manifest["all_final_items_scorable"] is False
+    assert manifest["split_proof"]["retained_holdout_intersection"] == []
+    exclusions = {item["pair_id"]: item for item in manifest["technical_exclusions"]}
+    for pair_id in FORCED_EXCLUSIONS:
+        item = exclusions[pair_id]
+        assert item["decision"] == "NOT_SCORABLE / EXCLUDE_FROM_VALIDATION"
+        assert item["quality_gate_reason_codes"] == [
+            "POSSIBLE_TRUE_OVERLAP", "UNUSUAL_DURATION"
+        ]
+        assert item["p1_scorability_reasons"] == [
+            "Reference audio was reduced by a reliable cancellation backend"
+        ]
+        assert item["p1_audio_presence_reasons"] == [
+            "Multiple aligned audio features indicate audible template speech"
+        ]
+        assert item["reference_contamination_scope"] == "SCORING_REGION"
+
+
 @pytest.mark.skipif(not PRIVATE_REQUIRED, reason="private workflow artifacts are not distributed")
-def test_preflight_is_frozen_and_refuses_to_run_after_any_rating(tmp_path):
+def test_correction_freezes_and_refuses_any_criterion_rating(tmp_path):
     root, artifact = _private_fixture(tmp_path)
-    source_rating = Path(
-        "human_ground_truth/p24_validation_v1/development_validation_ratings_v1.json"
+    shutil.copyfile(
+        "human_ground_truth/p24_validation_v1/development_validation_ratings_v1.json", artifact
     )
-    artifact.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source_rating, artifact)
-    destination = root / "fresh_preflight.json"
-    first = build_replacement_manifest(root, destination)
+    destination = root / "fresh_correction.json"
+    first = build_corrected_manifest(root, destination)
     frozen_bytes = destination.read_bytes()
-    second = build_replacement_manifest(root, destination)
-    assert second == first
+    assert build_corrected_manifest(root, destination) == first
     assert destination.read_bytes() == frozen_bytes
     destination.unlink()
     payload = json.loads(artifact.read_text(encoding="utf-8"))
     payload["items"][0]["fluency"] = 4
     artifact.write_text(json.dumps(payload), encoding="utf-8")
-    with pytest.raises(ValueError, match="has begun"):
-        build_replacement_manifest(root, destination)
-
-
-def test_preflight_validator_rejects_red_or_original_rating_overlap():
-    payload = json.loads(Path(MANIFEST_NAME).read_text(encoding="utf-8"))
-    payload["final_five_ids"][0] = RATING_IDS[0]
-    with pytest.raises(ValueError, match="overlaps"):
-        validate_replacement_manifest(payload)
-    payload = json.loads(Path(MANIFEST_NAME).read_text(encoding="utf-8"))
-    payload["preflight"][0]["p1_status"] = "RED"
-    with pytest.raises(ValueError, match="not objectively scorable"):
-        validate_replacement_manifest(payload)
-
-
-def test_technical_replacement_provenance_must_use_frozen_ranking():
-    payload = json.loads(Path(MANIFEST_NAME).read_text(encoding="utf-8"))
-    failed, replacement = "T001-D006", "T001-D002"
-    item = payload["preflight"][0]
-    item.update({
-        "p1_status": "RED",
-        "scorability": "UNSCORABLE_ALIGNMENT",
-        "teacher_rating_eligible": False,
-        "decision": "REPLACE_TECHNICAL_FAILURE",
-    })
-    payload["failed_ids"] = [failed]
-    payload["replacements"] = [{
-        "original_id": failed,
-        "replacement_id": replacement,
-        "reason": "PRE_RATING_TECHNICAL_ELIGIBILITY_REPLACEMENT",
-    }]
-    payload["deterministic_backup_ranking"] = [{
-        "pair_id": replacement,
-        "rank": 1,
-        "human_validation_score_used": False,
-    }]
-    payload["final_five_ids"][0] = replacement
-    validate_replacement_manifest(payload)
-    payload["replacements"][0]["replacement_id"] = "T001-D030"
-    with pytest.raises(ValueError, match="frozen backup ranking"):
-        validate_replacement_manifest(payload)
+    with pytest.raises(ValueError, match="Criterion rating exists"):
+        build_corrected_manifest(root, destination)
 
 
 @pytest.mark.skipif(not PRIVATE_REQUIRED, reason="private workflow artifacts are not distributed")
-def test_validation_queue_is_development_only_and_excludes_holdout():
-    split = json.loads(Path("cohort_runs/T001_p14/data_split_v2.json").read_text(
-        encoding="utf-8"))
-    assert set(VALIDATION_IDS) <= set(split["development"])
-    assert set(VALIDATION_IDS).isdisjoint(split["holdout"])
-
-
-@pytest.mark.skipif(not PRIVATE_REQUIRED, reason="private workflow artifacts are not distributed")
-def test_empty_artifact_is_separate_versioned_and_machine_selection_frozen(tmp_path):
+def test_blocked_artifact_initializes_three_null_items_at_zero_of_five(tmp_path):
     root, artifact = _private_fixture(tmp_path)
     original = root / "human_ground_truth/p22a_v1/ratings_v2.json"
     winner = root / "assessment_runs/T001_p24_tournament_v1/winner_freeze_v1.json"
     original_before, winner_before = original.read_bytes(), winner.read_bytes()
     payload = initialize_validation_rating_artifact(root, artifact)
-    assert tuple(payload["queue_ids"]) == VALIDATION_IDS
+    assert tuple(payload["queue_ids"]) == FINAL_IDS
     assert payload["rating_schema_version"] == RATING_SCHEMA_VERSION
-    assert payload["split"] == "DEVELOPMENT_VALIDATION"
-    assert payload["audio_source_type"] == "RAW_CROPPED"
-    assert payload["p24_frozen_plan_sha256"] == PLAN_SHA256
-    assert payload["ratings_must_not_reselect_p24_models"] is True
-    assert payload["automatic_calibration_after_completion"] is False
-    assert payload["automatic_merge_into_original_12"] is False
+    assert payload["status"] == "BLOCKED_INSUFFICIENT_SCORABLE_DEVELOPMENT_POOL"
+    assert payload["target_count"] == 5 and payload["eligible_count"] == 3
     assert rating_progress(payload) == (0, 5)
     assert all(item["human_confirmed"] is False for item in payload["items"])
     assert all(item["amber_scorability"] is None for item in payload["items"])
-    assert [item["requires_teacher_scorability_confirmation"] for item in payload["items"]] == [
-        True, True, False, False, False
-    ]
-    assert all(item[name] is None for item in payload["items"]
-               for name in ("fluency", "pronunciation", "intelligibility", "prosody"))
-    assert all(item["audio_source_type"] == "RAW_CROPPED" for item in payload["items"])
+    assert all(item[label] is None for item in payload["items"]
+               for label in ("fluency", "pronunciation", "intelligibility", "prosody"))
+    assert payload["ratings_must_not_reselect_p24_models"] is True
+    assert payload["automatic_calibration_after_completion"] is False
     assert original.read_bytes() == original_before
     assert winner.read_bytes() == winner_before
-    assert len(list((artifact.parent / "rating_backups").glob("*.json"))) == 1
 
 
 @pytest.mark.skipif(not PRIVATE_REQUIRED, reason="private workflow artifacts are not distributed")
-def test_safe_save_backup_and_restart_preserve_validation_rating_only(tmp_path):
+def test_blocked_queue_refuses_save_and_preserves_frozen_inputs(tmp_path):
     root, artifact = _private_fixture(tmp_path)
+    initialize_validation_rating_artifact(root, artifact)
     original = root / "human_ground_truth/p22a_v1/ratings_v2.json"
     winner = root / "assessment_runs/T001_p24_tournament_v1/winner_freeze_v1.json"
     original_hash, winner_hash = _sha(original), _sha(winner)
-    initialize_validation_rating_artifact(root, artifact)
-    saved = save_validation_rating(
-        artifact, root, "T001-D006", "SCORABLE",
-        {"fluency": 2, "pronunciation": 3, "intelligibility": 4, "prosody": 5},
-        pronunciation_examples="final sound",
-    )
-    restarted = json.loads(Path(str(artifact)).read_text(encoding="utf-8"))
-    persisted = restarted["items"][0]
-    assert persisted == saved
-    assert persisted["human_confirmed"] is True
-    assert [persisted[name] for name in
-            ("fluency", "pronunciation", "intelligibility", "prosody")] == [2, 3, 4, 5]
-    assert persisted["rater_metadata"]["human_reviewed"] is True
-    assert persisted["rater_metadata"]["split"] == "DEVELOPMENT_VALIDATION"
-    assert rating_progress(restarted) == (1, 5)
-    assert len(list((artifact.parent / "rating_backups").glob("*.json"))) == 2
+    with pytest.raises(ValueError, match="blocked"):
+        save_validation_rating(
+            artifact, root, "T001-D064", "SCORABLE",
+            {"fluency": 2, "pronunciation": 3, "intelligibility": 4, "prosody": 5},
+        )
+    restarted = json.loads(artifact.read_text(encoding="utf-8"))
+    assert rating_progress(restarted) == (0, 5)
+    assert all(item["human_confirmed"] is False for item in restarted["items"])
     assert _sha(original) == original_hash == ORIGINAL_RATINGS_SHA256
     assert _sha(winner) == winner_hash
-    assert not (root / "assessment_runs/T001_p22_calibrated_v01/calibration_summary.json").exists()
-
-
-@pytest.mark.skipif(not PRIVATE_REQUIRED, reason="private workflow artifacts are not distributed")
-def test_five_of_five_completion_does_not_merge_reselect_or_calibrate(tmp_path):
-    root, artifact = _private_fixture(tmp_path)
-    original = root / "human_ground_truth/p22a_v1/ratings_v2.json"
-    winner = root / "assessment_runs/T001_p24_tournament_v1/winner_freeze_v1.json"
-    original_before, winner_before = original.read_bytes(), winner.read_bytes()
-    initialize_validation_rating_artifact(root, artifact)
-    for pair_id in VALIDATION_IDS:
-        save_validation_rating(
-            artifact, root, pair_id, "SCORABLE",
-            {"fluency": 3, "pronunciation": 3, "intelligibility": 3, "prosody": 3},
-        )
-    completed = json.loads(artifact.read_text(encoding="utf-8"))
-    assert rating_progress(completed) == (5, 5)
-    assert completed["automatic_calibration_after_completion"] is False
-    assert completed["automatic_merge_into_original_12"] is False
-    assert completed["ratings_must_not_reselect_p24_models"] is True
-    assert original.read_bytes() == original_before
-    assert winner.read_bytes() == winner_before
-    assert not (root / "assessment_runs/T001_p22_calibrated_v01/calibration_summary.json").exists()
     assert not (root / "assessment_runs/T001_p25_frozen_validation_v1").exists()
 
 
 @pytest.mark.skipif(not PRIVATE_REQUIRED, reason="private workflow artifacts are not distributed")
-def test_teacher_validation_ui_is_five_item_machine_blind_and_unprefilled():
+def test_teacher_validation_ui_blocks_rating_and_hides_machine_evidence():
     app = AppTest.from_file(str(Path(__file__).parents[1] / "app.py"), default_timeout=60)
     app.query_params["mode"] = "teacher_validation"
     app.run()
     assert not app.exception
-    assert any(title.value == "Teacher Rating — P2.4 Development Validation"
-               for title in app.title)
     rendered = " ".join(str(element.value) for group in
                         (app.title, app.caption, app.markdown, app.info, app.warning, app.error)
                         for element in group)
     assert "Development Validation: 0 / 5" in rendered
+    assert "VALIDATION QUEUE BLOCKED" in rendered
+    assert all(pair_id in rendered for pair_id in FINAL_IDS)
+    assert all(pair_id in rendered for pair_id in FORCED_EXCLUSIONS)
+    assert not any(element.key == "teacher_validation_pair" for element in app.selectbox)
+    assert not any(button.label == "Save & Next" for button in app.button)
     assert all(term not in rendered.lower() for term in (
         "f0_baseline", "p0_asr_recognition", "i0_single_asr", "r0_praat",
         "micro-wer", "asr confidence", "pretrained_embedding_feature",
         "machine_calibration_unstable",
     ))
-    video = app.selectbox(key="teacher_validation_pair")
-    assert tuple(video.options) == VALIDATION_IDS
-    assert set(video.options).isdisjoint(RATING_IDS)
-    labels = {selectbox.label for selectbox in app.selectbox}
-    assert {"Fluency 1–5", "Pronunciation 1–5",
-            "Intelligibility 1–5", "Prosody 1–5"} <= labels
-    for name in ("fluency", "pronunciation", "intelligibility", "prosody"):
-        assert app.selectbox(key=f"teacher_validation_{name}_T001-D006").value is None
-    assert app.selectbox(key="teacher_validation_scorability_T001-D006").value is None
-    assert any(button.label == "Save & Next" for button in app.button)
-    assert not any(element.label == "VAD threshold" for element in app.selectbox)
-    video.set_value("T001-D064").run()
-    assert not app.exception
-    assert not any(element.key == "teacher_validation_scorability_T001-D064"
-                   for element in app.selectbox)
 
 
-def test_validation_launcher_targets_separate_mode():
+def test_validation_launcher_still_targets_separate_blocked_mode():
     batch = Path("START_VALIDATION_RATING.bat").read_text(encoding="utf-8")
     launcher = Path("scripts/start_validation_rating.ps1").read_text(encoding="utf-8")
     original = Path("scripts/start_teacher_rating.ps1").read_text(encoding="utf-8")
@@ -286,3 +218,8 @@ def test_validation_launcher_targets_separate_mode():
     assert "?mode=teacher_validation" in launcher
     assert "?mode=teacher" in original
     assert "teacher_validation" not in original
+
+
+def test_frozen_hash_constants_are_unchanged():
+    assert PLAN_SHA256 == "28b2e4ef7c17214c202e09bcc1a5c01c7cecc309a81881c86dec21b81886836a"
+    assert ORIGINAL_RATINGS_SHA256 == "6ffc1be2661c8ef3fbcf084c2cb4f83cec175d9f1996f20a444cdc6e13005f62"
