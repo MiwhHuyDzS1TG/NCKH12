@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import json
 import shutil
@@ -16,14 +17,26 @@ from speaking_evidence.p24_validation import (
     initialize_validation_rating_artifact,
     rating_progress,
     save_validation_rating,
+    validate_validation_rating_artifact,
 )
 from speaking_evidence.p24_validation_correction import (
-    FINAL_IDS,
+    FINAL_IDS as CORRECTED_FINAL_IDS,
     FORCED_EXCLUSIONS,
     MANIFEST_NAME as CORRECTED_MANIFEST_NAME,
     VERSION as CORRECTED_VERSION,
     build_corrected_manifest,
     validate_corrected_manifest,
+)
+from speaking_evidence.p24_validation_final import (
+    EXCLUDED_IDS,
+    FINAL_IDS,
+    MANIFEST_NAME as FINAL_MANIFEST_NAME,
+    MEMBERSHIP_SHA256,
+    P24D_PLAN_SHA256,
+    P24D_REPORT_SHA256,
+    VERSION as FINAL_VERSION,
+    queue_membership_sha256,
+    validate_final_queue_manifest,
 )
 from speaking_evidence.p24_validation_preflight import (
     MANIFEST_NAME as V1_MANIFEST_NAME,
@@ -53,6 +66,9 @@ def _private_fixture(tmp_path: Path) -> tuple[Path, Path]:
         "cohort_runs/T001_p14/development_manifest_v3.json",
         V1_MANIFEST_NAME,
         CORRECTED_MANIFEST_NAME,
+        FINAL_MANIFEST_NAME,
+        "p24d_multipa_plan_v1.json",
+        "MULTIPA_COMPETITION_SCORER_REPORT.md",
     )
     for relative in copies:
         source, destination = Path(relative), tmp_path / relative
@@ -70,8 +86,7 @@ def _private_fixture(tmp_path: Path) -> tuple[Path, Path]:
             handle.writeframes(b"\x00\x00" * 160)
         item["model_input_sha256"] = _sha(audio)
     summary_path.write_text(json.dumps(summary), encoding="utf-8")
-    artifact = tmp_path / "human_ground_truth/p24_validation_v1/development_validation_ratings_v1.json"
-    artifact.unlink()
+    artifact = tmp_path / "human_ground_truth/p24_validation_v1/development_validation_ratings_v2.json"
     return tmp_path, artifact
 
 
@@ -80,8 +95,28 @@ def test_corrected_queue_excludes_manual_failures_and_original_calibration_set()
         "T001-D006", "T001-D023", "T001-D064", "T001-D043", "T001-D048"
     )
     assert FORCED_EXCLUSIONS == ("T001-D006", "T001-D023")
-    assert VALIDATION_IDS == FINAL_IDS == ("T001-D064", "T001-D043", "T001-D048")
+    assert VALIDATION_IDS == FINAL_IDS == CORRECTED_FINAL_IDS == (
+        "T001-D064", "T001-D043", "T001-D048"
+    )
     assert set(VALIDATION_IDS).isdisjoint(RATING_IDS)
+
+
+def test_v3_final_queue_freezes_three_ids_hash_and_historical_exclusions():
+    manifest = json.loads(Path(FINAL_MANIFEST_NAME).read_text(encoding="utf-8"))
+    validate_final_queue_manifest(manifest)
+    assert manifest["version"] == FINAL_VERSION
+    assert tuple(manifest["final_queue_ids"]) == FINAL_IDS
+    assert tuple(manifest["excluded_ids"]) == EXCLUDED_IDS
+    assert manifest["queue_membership_sha256"] == MEMBERSHIP_SHA256
+    assert queue_membership_sha256(list(FINAL_IDS)) == MEMBERSHIP_SHA256
+    assert manifest["validation_progress"] == "0/3"
+    assert manifest["replacement_status"] == (
+        "NO_REPLACEMENTS_AVAILABLE_ELIGIBLE_DEVELOPMENT_POOL_EXHAUSTED"
+    )
+    for exclusion in manifest["technical_exclusions"]:
+        assert exclusion["decision"] == "NOT_SCORABLE / EXCLUDE_FROM_VALIDATION"
+        assert exclusion["reason"] == "PRE_RATING_TECHNICAL_ELIGIBILITY_EXCLUSION"
+        assert exclusion["replacement"] is None
 
 
 def test_v1_backup_ranking_was_frozen_empty_before_manual_correction():
@@ -129,10 +164,8 @@ def test_corrected_manifest_preserves_exact_p1_reasons_and_does_not_lower_thresh
 
 @pytest.mark.skipif(not PRIVATE_REQUIRED, reason="private workflow artifacts are not distributed")
 def test_correction_freezes_and_refuses_any_criterion_rating(tmp_path):
-    root, artifact = _private_fixture(tmp_path)
-    shutil.copyfile(
-        "human_ground_truth/p24_validation_v1/development_validation_ratings_v1.json", artifact
-    )
+    root, _ = _private_fixture(tmp_path)
+    artifact = root / "human_ground_truth/p24_validation_v1/development_validation_ratings_v1.json"
     destination = root / "fresh_correction.json"
     first = build_corrected_manifest(root, destination)
     frozen_bytes = destination.read_bytes()
@@ -147,7 +180,7 @@ def test_correction_freezes_and_refuses_any_criterion_rating(tmp_path):
 
 
 @pytest.mark.skipif(not PRIVATE_REQUIRED, reason="private workflow artifacts are not distributed")
-def test_blocked_artifact_initializes_three_null_items_at_zero_of_five(tmp_path):
+def test_v3_artifact_initializes_three_null_items_at_zero_of_three(tmp_path):
     root, artifact = _private_fixture(tmp_path)
     original = root / "human_ground_truth/p22a_v1/ratings_v2.json"
     winner = root / "assessment_runs/T001_p24_tournament_v1/winner_freeze_v1.json"
@@ -155,41 +188,47 @@ def test_blocked_artifact_initializes_three_null_items_at_zero_of_five(tmp_path)
     payload = initialize_validation_rating_artifact(root, artifact)
     assert tuple(payload["queue_ids"]) == FINAL_IDS
     assert payload["rating_schema_version"] == RATING_SCHEMA_VERSION
-    assert payload["status"] == "BLOCKED_INSUFFICIENT_SCORABLE_DEVELOPMENT_POOL"
-    assert payload["target_count"] == 5 and payload["eligible_count"] == 3
-    assert rating_progress(payload) == (0, 5)
+    assert payload["status"] == "READY_FOR_TEACHER_RATING"
+    assert payload["target_count"] == 3
+    assert payload["completed_count"] == 0 and payload["pending_count"] == 3
+    assert payload["queue_membership_sha256"] == MEMBERSHIP_SHA256
+    assert rating_progress(payload) == (0, 3)
     assert all(item["human_confirmed"] is False for item in payload["items"])
     assert all(item["amber_scorability"] is None for item in payload["items"])
     assert all(item[label] is None for item in payload["items"]
                for label in ("fluency", "pronunciation", "intelligibility", "prosody"))
-    assert payload["ratings_must_not_reselect_p24_models"] is True
-    assert payload["automatic_calibration_after_completion"] is False
+    assert payload["ratings_must_not_reselect_or_refit_scorer"] is True
+    assert payload["automatic_calibration"] is False
+    assert payload["automatic_p25"] is False
     assert original.read_bytes() == original_before
     assert winner.read_bytes() == winner_before
 
 
 @pytest.mark.skipif(not PRIVATE_REQUIRED, reason="private workflow artifacts are not distributed")
-def test_blocked_queue_refuses_save_and_preserves_frozen_inputs(tmp_path):
+def test_v3_queue_persists_fixture_rating_and_rejects_membership_tampering(tmp_path):
     root, artifact = _private_fixture(tmp_path)
     initialize_validation_rating_artifact(root, artifact)
     original = root / "human_ground_truth/p22a_v1/ratings_v2.json"
     winner = root / "assessment_runs/T001_p24_tournament_v1/winner_freeze_v1.json"
     original_hash, winner_hash = _sha(original), _sha(winner)
-    with pytest.raises(ValueError, match="blocked"):
-        save_validation_rating(
-            artifact, root, "T001-D064", "SCORABLE",
-            {"fluency": 2, "pronunciation": 3, "intelligibility": 4, "prosody": 5},
-        )
+    save_validation_rating(
+        artifact, root, "T001-D064", "SCORABLE",
+        {"fluency": 2, "pronunciation": 3, "intelligibility": 4, "prosody": 5},
+    )
     restarted = json.loads(artifact.read_text(encoding="utf-8"))
-    assert rating_progress(restarted) == (0, 5)
-    assert all(item["human_confirmed"] is False for item in restarted["items"])
+    assert rating_progress(restarted) == (1, 3)
+    assert next(item for item in restarted["items"] if item["pair_id"] == "T001-D064")["fluency"] == 2
+    tampered = copy.deepcopy(restarted)
+    tampered["items"][0]["pair_id"] = "T001-D006"
+    with pytest.raises(ValueError, match="membership"):
+        validate_validation_rating_artifact(tampered)
     assert _sha(original) == original_hash == ORIGINAL_RATINGS_SHA256
     assert _sha(winner) == winner_hash
     assert not (root / "assessment_runs/T001_p25_frozen_validation_v1").exists()
 
 
 @pytest.mark.skipif(not PRIVATE_REQUIRED, reason="private workflow artifacts are not distributed")
-def test_teacher_validation_ui_blocks_rating_and_hides_machine_evidence():
+def test_teacher_validation_ui_is_unblocked_ordered_and_hides_machine_evidence():
     app = AppTest.from_file(str(Path(__file__).parents[1] / "app.py"), default_timeout=60)
     app.query_params["mode"] = "teacher_validation"
     app.run()
@@ -197,12 +236,13 @@ def test_teacher_validation_ui_blocks_rating_and_hides_machine_evidence():
     rendered = " ".join(str(element.value) for group in
                         (app.title, app.caption, app.markdown, app.info, app.warning, app.error)
                         for element in group)
-    assert "Development Validation: 0 / 5" in rendered
-    assert "VALIDATION QUEUE BLOCKED" in rendered
-    assert all(pair_id in rendered for pair_id in FINAL_IDS)
-    assert all(pair_id in rendered for pair_id in FORCED_EXCLUSIONS)
-    assert not any(element.key == "teacher_validation_pair" for element in app.selectbox)
-    assert not any(button.label == "Save & Next" for button in app.button)
+    assert "Development Validation: 0 / 3" in rendered
+    assert "VALIDATION QUEUE BLOCKED" not in rendered
+    selector = next(element for element in app.selectbox
+                    if element.key == "teacher_validation_pair")
+    assert tuple(selector.options) == FINAL_IDS
+    assert any(button.label == "Save & Next" for button in app.button)
+    assert all(pair_id not in rendered for pair_id in EXCLUDED_IDS)
     assert all(term not in rendered.lower() for term in (
         "f0_baseline", "p0_asr_recognition", "i0_single_asr", "r0_praat",
         "micro-wer", "asr confidence", "pretrained_embedding_feature",
@@ -210,7 +250,7 @@ def test_teacher_validation_ui_blocks_rating_and_hides_machine_evidence():
     ))
 
 
-def test_validation_launcher_still_targets_separate_blocked_mode():
+def test_validation_launcher_targets_separate_three_item_mode():
     batch = Path("START_VALIDATION_RATING.bat").read_text(encoding="utf-8")
     launcher = Path("scripts/start_validation_rating.ps1").read_text(encoding="utf-8")
     original = Path("scripts/start_teacher_rating.ps1").read_text(encoding="utf-8")
@@ -223,3 +263,5 @@ def test_validation_launcher_still_targets_separate_blocked_mode():
 def test_frozen_hash_constants_are_unchanged():
     assert PLAN_SHA256 == "28b2e4ef7c17214c202e09bcc1a5c01c7cecc309a81881c86dec21b81886836a"
     assert ORIGINAL_RATINGS_SHA256 == "6ffc1be2661c8ef3fbcf084c2cb4f83cec175d9f1996f20a444cdc6e13005f62"
+    assert _sha(Path("p24d_multipa_plan_v1.json")) == P24D_PLAN_SHA256
+    assert _sha(Path("MULTIPA_COMPETITION_SCORER_REPORT.md")) == P24D_REPORT_SHA256

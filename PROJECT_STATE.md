@@ -1466,3 +1466,17 @@ The fixed 18-video holdout was not opened, processed or used. `D064`, `D043`, an
 
 **Next action:** teacher rates only `D064`, `D043`, and `D048`, then P2.5 compares the already-frozen P2.4D configuration once. Do not refit/reselect with those three ratings, open holdout, generate feedback or create an Overall score.
 
+# P2.4D VALIDATION QUEUE V3 — FINAL THREE-ITEM MIGRATION (2026-11-07)
+
+The pre-rating validation queue migration is complete. The original five-item selection and both replacement/scorability manifests remain preserved unchanged. `T001-D006` and `T001-D023` are historical technical exclusions with decision `NOT_SCORABLE / EXCLUDE_FROM_VALIDATION`, reason `PRE_RATING_TECHNICAL_ELIGIBILITY_EXCLUSION`, and no replacements because the eligible development pool is exhausted.
+
+The active queue is frozen in `p24_validation_final_queue_v3.json` as exactly `T001-D064`, `T001-D043`, `T001-D048`, in that order. Its membership SHA-256 is `116db3582ea73fba69aff7cf57562c2f47e28764df114fd9196b56439e1a4af6`. The teacher workflow now uses the separate private `development_validation_ratings_v2.json`; the historical `development_validation_ratings_v1.json` remains byte-identical at SHA-256 `25f288e772fbe6d7e82accb30396ae4e5663aad9a22c2783f8ea63e471f0e32e`.
+
+Current validation progress is **0/3**: completed 0, pending 3, and Fluency/Pronunciation/Intelligibility/Prosody are null for all three items. The `?mode=teacher_validation` page is unblocked, preserves queue order, shows no machine evidence/prediction and still revalidates the frozen manifest hash, membership hash, audio provenance and immutable research artifacts before every read/save. Completion does not automatically start P2.5, calibration, model selection or scorer refitting.
+
+The original 12 ratings remain SHA-256 `6ffc1be2661c8ef3fbcf084c2cb4f83cec175d9f1996f20a444cdc6e13005f62`. The P2.4D scorer plan remains SHA-256 `90755aaa169b605c7b9a070ae411dc28366a2b3e568e4daf2e81dc15a4cee1c1`; the MultiPA report remains SHA-256 `b7824a624a8197db59f297e9f328bb0fdcb2d3400c4e4ae323bf6838786deecb`. No scorer, calibration, model checkpoint, split or completeness method changed. The fixed 18 holdout was not opened or processed.
+
+Verification: targeted validation-queue/AppTest suite **10 passed**; full normal suite **108 passed, 3 skipped**; Python compilation passed for the app, packages and scripts.
+
+**Next action:** the teacher rates `D064`, `D043`, and `D048` once. After 3/3, run the frozen P2.5 mini-validation without refitting or reselecting the scorer.
+

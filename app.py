@@ -1041,7 +1041,7 @@ Nghe nhịp câu, chia cụm ý, sentence stress và ngữ điệu. Không chấ
 
 
 def _teacher_validation_dashboard() -> None:
-    """Machine-blind five-video workflow for frozen P2.4 validation only."""
+    """Machine-blind three-video workflow for frozen P2.4D validation only."""
     from speaking_evidence.p24_validation import (
         VALIDATION_IDS,
         default_artifact_path,
@@ -1069,17 +1069,6 @@ def _teacher_validation_dashboard() -> None:
         "Chỉ chấm phần học sinh nói. Không có điểm máy, dự đoán hay kết quả P2.4 "
         "được hiển thị trên trang này."
     )
-    if payload.get("status") == "BLOCKED_INSUFFICIENT_SCORABLE_DEVELOPMENT_POOL":
-        st.error(
-            "VALIDATION QUEUE BLOCKED: chỉ có 3/5 video development đủ điều kiện "
-            "SCORABLE. Không thể bắt đầu chấm và không hạ chuẩn để chọn video thay thế."
-        )
-        st.markdown("**Video SCORABLE còn lại:** T001-D064, T001-D043, T001-D048")
-        st.info(
-            "T001-D006 và T001-D023 đã bị loại khỏi validation. Pool development hợp lệ "
-            "đã cạn; hàng chờ vẫn ở 0/5."
-        )
-        return
     with st.expander("Hướng dẫn 4 tiêu chí", expanded=True):
         st.markdown("""
 **Fluency — How smoothly and continuously does the learner speak?**
@@ -1104,7 +1093,7 @@ Thang chung: 1 = rất yếu, 3 = trung bình, 5 = rất tốt. Không chấm ng
     items = payload["items"]
     pair_ids = [item["pair_id"] for item in items]
     if tuple(pair_ids) != VALIDATION_IDS:
-        st.error("Hàng chờ validation không khớp 5 video đã đóng băng.")
+        st.error("Hàng chờ validation không khớp 3 video đã đóng băng.")
         return
     first_pending = next((index for index, item in enumerate(items)
                           if not item.get("human_confirmed")), 0)
@@ -1184,7 +1173,7 @@ Thang chung: 1 = rất yếu, 3 = trung bình, 5 = rất tốt. Không chấm ng
         st.rerun()
 
     if completed_count == total:
-        st.success("DEVELOPMENT VALIDATION RATINGS COMPLETE: 5/5")
+        st.success("DEVELOPMENT VALIDATION RATINGS COMPLETE: 3/3")
         st.caption("Không tự động retrain, recalibrate, merge ratings hoặc mở holdout.")
 
 
