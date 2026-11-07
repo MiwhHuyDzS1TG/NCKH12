@@ -1480,3 +1480,24 @@ Verification: targeted validation-queue/AppTest suite **10 passed**; full normal
 
 **Next action:** the teacher rates `D064`, `D043`, and `D048` once. After 3/3, run the frozen P2.5 mini-validation without refitting or reselecting the scorer.
 
+# P2.5 — FROZEN DEVELOPMENT MINI-VALIDATION (2026-11-07)
+
+P2.5 is complete on exactly the three pre-approved development-validation items `T001-D064`, `T001-D043`, and `T001-D048`. Their human ratings are complete **3/3** with teacher/human provenance preserved. The original 12-rating artifact remains byte-identical at SHA-256 `6ffc1be2661c8ef3fbcf084c2cb4f83cec175d9f1996f20a444cdc6e13005f62`.
+
+The P2.4D scorer, mappings, features and released MultiPA checkpoint were hash-verified before inference. Machine inputs and frozen predictions were created without opening the three-rating artifact; only the final evaluation stage read teacher ratings. No fitting, recalibration, threshold change, model reselection, new feature selection or holdout processing occurred. The prediction stage used the existing RAW_CROPPED Phase-1 learner audio, frozen small.en evidence, confirmed T001 target, deterministic <=14.5 s segmentation and frozen mapping coefficients.
+
+## Frozen mini-validation result
+
+- **Pronunciation / calibrated MultiPA Accuracy:** MAE **0.4360**, exact-band **0.6667**, within-one-band **1.0000**. Pearson **-0.9458** and Spearman **-0.8660** are descriptive only at N=3. All errors were <=0.8640, but predictions were narrowly concentrated (standard deviation 0.0429), so the signal is `GENERALIZATION_SIGNAL_MIXED` and the competition recommendation is `KEEP_WITH_CAVEAT`.
+- **Fluency / frozen NCKH12 F0-timing baseline:** MAE **0.5133**, exact-band **0.6667**, within-one-band **1.0000**. Descriptive Pearson **0.1480**, Spearman **0.0000**. Errors remained <=0.7100 and performance was close to development LOOCV MAE 0.4204, so the signal is `GENERALIZATION_SIGNAL_POSITIVE` and recommendation is `KEEP`.
+- **Prosody / calibrated MultiPA Prosody:** MAE **0.7027**, exact-band **0.3333**, within-one-band **0.6667**. Descriptive Pearson **-0.2132**, Spearman **0.0000**. D048 had the largest error, 1.2644; the signal is `GENERALIZATION_SIGNAL_MIXED` and recommendation is `KEEP_WITH_CAVEAT`.
+- **Completeness:** deterministic ASR-assisted coverage was 0.9366 / 0.9507 / 0.9296 for D064 / D043 / D048; recommendation remains `KEEP`. ASR differences are not treated as proven learner reading or pronunciation errors.
+- **Intelligibility:** remains `HUMAN_ONLY / MACHINE_UNSTABLE`; no machine score was created.
+- **Overall:** not created.
+
+The three cases are too few for stable correlation inference or significance claims and use one AI-assisted rater. P2.5 is a competition-engineering check, not external validation or CEFR/B2/IELTS evidence. Full per-item evidence, raw MultiPA outputs, calibrated predictions, errors, warnings and provenance are recorded in `P25_FROZEN_MINI_VALIDATION_REPORT.md`. The frozen prediction artifact hash is `2f4438d86c4226404554dbaa2b033922d450733946d779084f4e585f41a147bf`; the validation rating artifact hash remains `707d4c33eafaaf54a21c131bff6b1fec09538b06d911b447275fd69ef00ed464`.
+
+The fixed 18-video holdout was not opened, processed or used.
+
+**Next action:** freeze the competition-facing scope as Fluency + deterministic Completeness, retain Pronunciation and Prosody only with explicit preliminary/narrow-range caveats, and move to demo/UI/feedback preparation. Do not tune on the three P2.5 items or open the holdout.
+

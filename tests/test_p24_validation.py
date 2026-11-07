@@ -236,11 +236,15 @@ def test_teacher_validation_ui_is_unblocked_ordered_and_hides_machine_evidence()
     rendered = " ".join(str(element.value) for group in
                         (app.title, app.caption, app.markdown, app.info, app.warning, app.error)
                         for element in group)
-    assert "Development Validation: 0 / 3" in rendered
+    ratings = json.loads(Path(
+        "human_ground_truth/p24_validation_v1/development_validation_ratings_v2.json"
+    ).read_text(encoding="utf-8"))
+    completed, total = rating_progress(ratings)
+    assert f"Development Validation: {completed} / {total}" in rendered
     assert "VALIDATION QUEUE BLOCKED" not in rendered
     selector = next(element for element in app.selectbox
                     if element.key == "teacher_validation_pair")
-    assert tuple(selector.options) == FINAL_IDS
+    assert tuple(str(option).split()[0] for option in selector.options) == FINAL_IDS
     assert any(button.label == "Save & Next" for button in app.button)
     assert all(pair_id not in rendered for pair_id in EXCLUDED_IDS)
     assert all(term not in rendered.lower() for term in (
