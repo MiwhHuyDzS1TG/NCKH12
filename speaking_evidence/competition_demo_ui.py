@@ -13,11 +13,18 @@ import streamlit.components.v1 as components
 from speaking_evidence.competition_demo import (
     DEMO_IDS,
     DEMO_LABELS,
+    DEMO_ROLES,
     StaleDemoCacheError,
     load_demo_cache,
     offline_readiness,
     resolve_demo_video,
     run_live_analysis,
+)
+from speaking_evidence.competition_review import (
+    ReviewValidationError,
+    export_review_bundle,
+    import_review,
+    selected_feedback,
 )
 
 
@@ -85,6 +92,9 @@ div[role="radiogroup"] label {
   transition:border-color .18s ease, transform .18s ease;
 }
 div[role="radiogroup"] label:hover {border-color:var(--demo-accent); transform:translateY(-1px);}
+[data-testid="stRadioOption"][data-selected="true"] > div > div > div:first-child {
+  background-color:var(--demo-accent) !important; border-color:var(--demo-accent) !important;
+}
 [data-testid="stFileUploader"] {background:var(--demo-card); border-radius:var(--demo-radius); padding:1rem; border:1px solid var(--demo-line);}
 [data-testid="stFileUploaderDropzone"] {border:1.5px dashed #9fb0ca; border-radius:12px; background:#f8faff;}
 .demo-process {display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.65rem; margin:.5rem 0 1.25rem;}
@@ -109,6 +119,11 @@ div[role="radiogroup"] label:hover {border-color:var(--demo-accent); transform:t
 .demo-feedback-card.primary {background:linear-gradient(145deg,#eef3ff,#ffffff 72%); border-color:#cbd8f5;}
 .demo-feedback-label {font-size:.76rem; font-weight:800; color:var(--demo-accent); margin-bottom:.55rem;}
 .demo-feedback-text {font-size:.95rem; line-height:1.55; color:var(--demo-text);}
+.demo-feedback-meta {font-size:.72rem; color:var(--demo-muted); margin:-.2rem 0 .7rem;}
+.demo-topic {display:inline-block; margin:.35rem 0 .75rem; color:var(--demo-accent); font-size:.78rem; font-weight:760;}
+.demo-reading-grid {display:grid; grid-template-columns:1fr 1fr; gap:.85rem; margin:.7rem 0 1rem;}
+.demo-reading-label {font-size:.76rem; font-weight:800; color:var(--demo-accent); margin-bottom:.45rem;}
+.demo-words {margin-top:.7rem;}
 .demo-mini-grid {display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.65rem; margin:.65rem 0 1rem;}
 .demo-mini {background:var(--demo-card); border:1px solid var(--demo-line); border-radius:12px; padding:.8rem;}
 .demo-mini b {display:block; font-size:1.15rem; color:var(--demo-text);}
@@ -123,6 +138,7 @@ details {border-radius:var(--demo-radius) !important; border-color:var(--demo-li
   .block-container {padding:1rem 1.2rem 3rem;}
   .demo-score-grid, .demo-process, .demo-mini-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
   .demo-feedback-grid, .demo-trust-row {grid-template-columns:1fr;}
+  .demo-reading-grid {grid-template-columns:1fr;}
   .st-key-competition_hero {padding:1.35rem; min-height:auto;}
   .st-key-competition_hero iframe {min-height:270px;}
 }
@@ -163,8 +179,13 @@ def _landing(root: Path) -> None:
         with left:
             st.markdown("<div class='demo-kicker'>Evidence-based speaking practice</div>", unsafe_allow_html=True)
             st.markdown("<h1 class='demo-hero-title'>Turn a Duet into useful speaking feedback.</h1>", unsafe_allow_html=True)
-            st.markdown("<p class='demo-hero-copy'>Upload a completed TikTok Duet and receive clear, measured feedback on your controlled reading.</p>", unsafe_allow_html=True)
-            if st.button("Assess Speaking", type="primary", width="stretch", key="competition_cta"):
+            st.markdown("<p class='demo-hero-copy'>Choose or upload a completed Duet and receive criterion-level speaking feedback.</p>", unsafe_allow_html=True)
+            primary, secondary = st.columns(2)
+            if primary.button("Try a Demo", type="primary", width="stretch", key="competition_demo_cta"):
+                st.session_state["competition_input_mode"] = "Try a Demo"
+                _go("assessment")
+            if secondary.button("Assess a Duet", width="stretch", key="competition_upload_cta"):
+                st.session_state["competition_input_mode"] = "Assess a Duet"
                 _go("assessment")
         with right:
             image_bytes = (root / "assets/competition-hero-v1.webp").read_bytes()
@@ -187,7 +208,10 @@ def _landing(root: Path) -> None:
 
 
 def _fast_demo(root: Path) -> None:
-    labels = {pair_id: f"{DEMO_LABELS[pair_id]}  |  {pair_id.replace('T001-', '')}" for pair_id in DEMO_IDS}
+    labels = {
+        pair_id: f"{DEMO_LABELS[pair_id]} | {DEMO_ROLES[pair_id]} | {pair_id.replace('T001-', '')}"
+        for pair_id in DEMO_IDS
+    }
     selected = st.radio(
         "Choose a demonstration",
         DEMO_IDS,
@@ -201,7 +225,8 @@ def _fast_demo(root: Path) -> None:
             with st.status("Preparing the assessment", expanded=True) as status:
                 result = load_demo_cache(root, selected, verify_media=True)
                 for message in ("Video received", "Learner speech identified",
-                                "Audio quality verified", "AI speaking analysis completed"):
+                                "Audio quality verified", "Speaking evidence loaded",
+                                "Feedback prepared"):
                     st.write(message)
                     time.sleep(.08)
                 status.update(label="Assessment ready", state="complete", expanded=False)
@@ -259,10 +284,17 @@ def _assessment(root: Path) -> None:
         _go("home")
     st.markdown("<div class='demo-section-head'>Choose how to assess</div>", unsafe_allow_html=True)
     st.markdown("<p class='demo-section-copy'>Use a prepared demonstration for a fast presentation, or run the full local pipeline on a new completed Duet.</p>", unsafe_allow_html=True)
-    fast, live = st.tabs(["Fast Demo", "Live Analysis"])
-    with fast:
+    st.session_state.setdefault("competition_input_mode", "Try a Demo")
+    choice = st.radio(
+        "Assessment path",
+        ["Try a Demo", "Assess a Duet"],
+        horizontal=True,
+        key="competition_input_mode",
+        label_visibility="collapsed",
+    )
+    if choice == "Try a Demo":
         _fast_demo(root)
-    with live:
+    else:
         _live_demo(root)
 
 
@@ -290,8 +322,8 @@ def _score_card(name: str, value: float | None, subtitle: str, status: str,
     )
 
 
-def _feedback(result: dict) -> None:
-    feedback = result["feedback"]
+def _feedback(root: Path, result: dict) -> dict:
+    feedback, provenance = selected_feedback(root, result)
     cards = (
         ("What you did well", feedback["strength"]["text"], " primary"),
         ("Focus next", feedback["focus_next"]["text"], ""),
@@ -304,6 +336,17 @@ def _feedback(result: dict) -> None:
             f"<div class='demo-feedback-text'>{html.escape(text)}</div></div>"
         )
     st.markdown(markup + "</div>", unsafe_allow_html=True)
+    words = feedback.get("review_words") or [
+        row.get("word") for row in result.get("evidence", {}).get("word_review_prompts", [])
+        if row.get("word")
+    ]
+    if words:
+        st.markdown(
+            "<div class='demo-words'><span class='demo-feedback-label'>Words to review</span><br>" +
+            " ".join(f"<span class='demo-word-chip'>{html.escape(word)}</span>" for word in words[:3]) +
+            "</div>", unsafe_allow_html=True)
+        st.caption("Review prompts are not confirmed pronunciation errors.")
+    return provenance
 
 
 def _metric_grid(metrics: list[tuple[str, str]]) -> None:
@@ -318,12 +361,12 @@ def _evidence_explorer(result: dict, root: Path) -> None:
     complete = result.get("completeness", {})
     with st.expander("See why you received these scores", expanded=False):
         st.markdown("### Pronunciation")
-        raw = evidence.get("raw_multipa") or {}
         prompts = evidence.get("word_review_prompts", [])
         _metric_grid([
-            (f"{raw.get('accuracy'):.2f}" if isinstance(raw.get("accuracy"), (int, float)) else "Unavailable",
-             "Raw MultiPA accuracy evidence"),
-            (str(len(prompts)), "Word review prompts"),
+            (f"{result.get('scores', {}).get('pronunciation'):.1f} / 5"
+             if isinstance(result.get("scores", {}).get("pronunciation"), (int, float)) else "Unavailable",
+             "Preliminary pronunciation"),
+            (str(len(prompts)), "Supported review words"),
         ])
         if prompts:
             st.markdown("Words with lower relative model evidence: " + " ".join(
@@ -341,9 +384,11 @@ def _evidence_explorer(result: dict, root: Path) -> None:
         ])
 
         st.markdown("### Prosody")
+        prosody = result.get("scores", {}).get("prosody")
         _metric_grid([
-            (f"{raw.get('prosody'):.2f}" if isinstance(raw.get("prosody"), (int, float)) else "Unavailable", "Raw MultiPA prosody evidence"),
-            (f"{raw.get('total'):.2f}" if isinstance(raw.get("total"), (int, float)) else "Unavailable", "Model context score"),
+            (f"{prosody:.1f} / 5" if isinstance(prosody, (int, float)) else "Unavailable",
+             "Preliminary prosody"),
+            ("Formative", "Rhythm, stress and intonation evidence"),
         ])
         st.caption("Prosody is preliminary and should be read as formative evidence, not a proficiency label.")
 
@@ -360,10 +405,13 @@ def _evidence_explorer(result: dict, root: Path) -> None:
                 unsafe_allow_html=True)
         st.caption("Possible ASR uncertainty is not the same as a confirmed learner omission.")
 
-        st.markdown("### Target passage")
-        st.markdown(f"<div class='demo-reading'>{html.escape(result.get('target_text', 'Unavailable'))}</div>", unsafe_allow_html=True)
-        st.markdown("### Learner transcript")
-        st.markdown(f"<div class='demo-reading'>{html.escape(result.get('transcript', 'Unavailable'))}</div>", unsafe_allow_html=True)
+        st.markdown("### Target and transcript")
+        st.markdown(
+            f"<div class='demo-topic'>Topic: {html.escape(result.get('target_topic', 'Unavailable'))}</div>"
+            "<div class='demo-reading-grid'>"
+            f"<div><div class='demo-reading-label'>Scored passage</div><div class='demo-reading'>{html.escape(result.get('target_text', 'Unavailable'))}</div></div>"
+            f"<div><div class='demo-reading-label'>Learner transcript</div><div class='demo-reading'>{html.escape(result.get('transcript', 'Unavailable'))}</div></div>"
+            "</div>", unsafe_allow_html=True)
 
         if result.get("source_mode") == "FAST_DEMO_FROZEN_CACHE":
             try:
@@ -372,6 +420,52 @@ def _evidence_explorer(result: dict, root: Path) -> None:
                 st.video(str(video))
             except (OSError, ValueError):
                 st.info("The source video is unavailable, but the verified machine evidence remains unchanged.")
+
+
+def _technical_details(result: dict, feedback_provenance: dict) -> None:
+    raw = result.get("evidence", {}).get("raw_multipa") or {}
+    with st.expander("Technical details", expanded=False):
+        _metric_grid([
+            (f"{raw.get('accuracy'):.3f}" if isinstance(raw.get("accuracy"), (int, float)) else "Unavailable",
+             "Raw MultiPA Accuracy"),
+            (f"{result.get('scores', {}).get('pronunciation'):.3f}"
+             if isinstance(result.get("scores", {}).get("pronunciation"), (int, float)) else "Unavailable",
+             "Calibrated Pronunciation"),
+            (f"{raw.get('prosody'):.3f}" if isinstance(raw.get("prosody"), (int, float)) else "Unavailable",
+             "Raw MultiPA Prosody"),
+            (f"{result.get('scores', {}).get('prosody'):.3f}"
+             if isinstance(result.get("scores", {}).get("prosody"), (int, float)) else "Unavailable",
+             "Calibrated Prosody"),
+        ])
+        st.write(f"ASR backend: {result.get('evidence', {}).get('asr_model', 'Unavailable')}")
+        st.write(f"Feedback source: {feedback_provenance.get('feedback_source', 'Unavailable')}")
+        st.write(f"Target profile: {result.get('target_profile_sha256', 'Unavailable')}")
+        st.caption("Numeric speaking scores come only from the frozen local scorer. Imported review can change wording, never scores.")
+
+
+def _presenter_tools(root: Path, result: dict, feedback_provenance: dict) -> None:
+    if str(st.query_params.get("presenter", "0")) != "1":
+        return
+    _technical_details(result, feedback_provenance)
+    with st.expander("Presenter tools", expanded=False):
+        st.write("Cache and feedback provenance are visible only in presenter mode.")
+        if result.get("source_mode") == "FAST_DEMO_FROZEN_CACHE":
+            if st.button("Export GPT review bundle", key="competition_export_review"):
+                destination = export_review_bundle(root, result["pair_id"])
+                st.success(f"Review bundle exported locally for {result['pair_id']}.")
+                st.caption(str(destination.relative_to(root)).replace("\\", "/"))
+            upload = st.file_uploader("Import structured review JSON", type=["json"], key="competition_review_upload")
+            if st.button("Validate and import review", disabled=upload is None,
+                         key="competition_import_review"):
+                incoming = root / "runs/competition_gpt_review/incoming" / f"{result['pair_id']}.json"
+                incoming.parent.mkdir(parents=True, exist_ok=True)
+                incoming.write_bytes(upload.getvalue())
+                try:
+                    import_review(root, incoming, result["pair_id"])
+                    st.success("Review imported. Official scores remain unchanged.")
+                    st.rerun()
+                except (OSError, ValueError, ReviewValidationError):
+                    st.error("The review was rejected because its schema, evidence, or hashes did not match.")
 
 
 def _judge_panels() -> None:
@@ -437,10 +531,11 @@ def _results(root: Path, result: dict) -> None:
     st.markdown("<div class='demo-score-grid'>" + "".join(cards) + "</div>", unsafe_allow_html=True)
     for failure in result.get("model_failures", []):
         st.info(failure["public_message"])
-    _feedback(result)
+    feedback_provenance = _feedback(root, result)
     _evidence_explorer(result, root)
+    _presenter_tools(root, result, feedback_provenance)
     _judge_panels()
-    st.markdown("<div class='demo-footer'>Development and preliminary assessment. Not CEFR, B2 or IELTS.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='demo-footer'>Development-stage formative assessment. Not CEFR, IELTS or a standardized proficiency score.</div>", unsafe_allow_html=True)
 
 
 def render_competition_demo(root: Path) -> None:

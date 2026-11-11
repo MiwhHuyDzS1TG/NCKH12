@@ -33,13 +33,20 @@ from speaking_evidence.p24d_multipa import (
 )
 
 
-CACHE_VERSION = "competition-demo-cache-v1"
-CACHE_NAME = "competition_demo_cache_v1.json"
-DEMO_IDS = ("T001-D064", "T001-D043", "T001-D048")
+CACHE_VERSION = "competition-demo-cache-v2"
+CACHE_NAME = "competition_demo_cache_v2.json"
+TARGET_PROFILE_NAME = "competition_target_profile_v2.json"
+TARGET_PROFILE_SHA256 = "e2a4b2f1ee77860bab9a1a075d07bf61a27fe9ab641a71719dc129def1fb9da2"
+DEMO_IDS = ("T001-D043", "T001-D064", "T001-D048")
 DEMO_LABELS = {
     "T001-D064": "Demo Student A",
     "T001-D043": "Demo Student B",
     "T001-D048": "Demo Student C",
+}
+DEMO_ROLES = {
+    "T001-D043": "Main demo",
+    "T001-D064": "Consistency example",
+    "T001-D048": "Challenge case",
 }
 FROZEN_FILES = {
     "p24d_plan_sha256": ("p24d_multipa_plan_v1.json",
@@ -107,6 +114,20 @@ def verify_frozen_scorer(root: Path) -> dict[str, str]:
     return verified
 
 
+def load_competition_target(root: Path) -> dict:
+    """Load the audited competition target boundary without changing v1 history."""
+    path = root / TARGET_PROFILE_NAME
+    if sha256_file(path) != TARGET_PROFILE_SHA256:
+        raise ValueError("Competition target profile changed")
+    target = _load(path)
+    if (target.get("version") != "competition-target-v2"
+            or target.get("classification") != "TITLE_TOPIC_LABEL"
+            or target.get("scoring_action") != "EXCLUDE_TOPIC_FROM_READING_COMPLETENESS"
+            or not target.get("scored_passage")):
+        raise ValueError("Competition target audit policy changed")
+    return target
+
+
 def _manifest_rows(root: Path) -> dict[str, dict]:
     rows = _load(root / "cohort_runs/T001_p14/development_manifest_v3.json")
     return {row["pair_id"]: row for row in rows}
@@ -172,6 +193,9 @@ def validate_demo_cache(root: Path, cache: dict, verify_media: bool = True) -> d
         raise StaleDemoCacheError("Demo cache membership changed")
     if cache.get("frozen_hashes") != frozen:
         raise StaleDemoCacheError("Demo cache scorer hashes are stale")
+    if cache.get("target_profile_sha256") != TARGET_PROFILE_SHA256:
+        raise StaleDemoCacheError("Demo cache target profile is stale")
+    load_competition_target(root)
     if (cache.get("holdout_processed") is not False
             or cache.get("refit_performed") is not False
             or cache.get("machine_intelligibility") is not None
@@ -191,6 +215,9 @@ def validate_demo_cache(root: Path, cache: dict, verify_media: bool = True) -> d
                 or item.get("scorability_status") != "SCORABLE_CLEAN"
                 or item.get("audio_source_type") != "RAW_CROPPED"):
             raise StaleDemoCacheError(f"Unsafe demo item: {item.get('pair_id')}")
+        if (item.get("target_profile_sha256") != TARGET_PROFILE_SHA256
+                or item.get("target_topic") != "One memorable event"):
+            raise StaleDemoCacheError(f"Stale target evidence: {item.get('pair_id')}")
         scores = item.get("scores", {})
         if (set(scores) != {"pronunciation", "fluency", "prosody", "completeness"}
                 or any(not isinstance(scores[name], (int, float)) for name in scores)):
@@ -246,10 +273,22 @@ def deterministic_feedback(item: dict) -> dict:
     fluency = item.get("evidence", {}).get("fluency", {})
     words = item.get("evidence", {}).get("word_review_prompts", [])[:3]
     coverage = completeness.get("coverage")
-    if isinstance(coverage, (int, float)) and coverage >= 0.90:
+    long_pauses = fluency.get("long_pause_count")
+    if (isinstance(scores.get("fluency"), (int, float)) and scores["fluency"] >= 4.6
+            and isinstance(long_pauses, (int, float)) and long_pauses == 0):
+        strength = {
+            "text": "Your reading stayed continuous, with no measured long pauses interrupting the flow.",
+            "evidence_refs": ["scores.fluency", "evidence.fluency.long_pause_count"],
+        }
+    elif isinstance(coverage, (int, float)) and coverage >= 0.97:
         strength = {
             "text": f"You covered {coverage:.0%} of the target passage, so most of the reading was captured clearly.",
             "evidence_refs": ["completeness.coverage"],
+        }
+    elif isinstance(scores.get("prosody"), (int, float)) and scores["prosody"] >= 4.2:
+        strength = {
+            "text": "Your prosody evidence was the strongest measured area, suggesting useful rhythm and intonation across the passage.",
+            "evidence_refs": ["scores.prosody", "evidence.raw_multipa.prosody"],
         }
     elif isinstance(scores.get("fluency"), (int, float)):
         strength = {
@@ -266,6 +305,13 @@ def deterministic_feedback(item: dict) -> dict:
                   if name in {"pronunciation", "fluency", "prosody", "completeness"}
                   and isinstance(value, (int, float))}
     priority = min(comparable, key=comparable.get) if comparable else None
+    if (isinstance(long_pauses, (int, float)) and long_pauses >= 3
+            and isinstance(scores.get("fluency"), (int, float))):
+        priority = "fluency"
+    elif (isinstance(scores.get("pronunciation"), (int, float))
+          and isinstance(scores.get("prosody"), (int, float))
+          and abs(scores["pronunciation"] - scores["prosody"]) <= 0.05):
+        priority = "prosody"
     if priority == "pronunciation" and words:
         labels = ", ".join(row["word"] for row in words)
         focus = {
@@ -332,7 +378,7 @@ def build_demo_cache(root: Path, destination: Path | None = None) -> dict:
     evidence_path = root / ".local/multipa/p25/run/machine_evidence.json"
     predictions = _load(prediction_path)
     evidence = _load(evidence_path)
-    if (tuple(predictions.get("validation_ids", [])) != DEMO_IDS
+    if (set(predictions.get("validation_ids", [])) != set(DEMO_IDS)
             or predictions.get("validation_ratings_read") is not False
             or predictions.get("training_or_refitting_performed") is not False
             or predictions.get("holdout_processed") is not False):
@@ -341,7 +387,7 @@ def build_demo_cache(root: Path, destination: Path | None = None) -> dict:
     summary_by_id = {item["pair_id"]: item for item in summary["items"]}
     evidence_by_id = {item["pair_id"]: item for item in evidence["items"]}
     prediction_by_id = {item["pair_id"]: item for item in predictions["predictions"]}
-    target = _load(root / "task_profiles/T001_target_text_v1.json")
+    target = load_competition_target(root)
     rows = []
     for pair_id in DEMO_IDS:
         prediction = prediction_by_id[pair_id]
@@ -349,7 +395,8 @@ def build_demo_cache(root: Path, destination: Path | None = None) -> dict:
         source = summary_by_id[pair_id]
         asr_path = root / f"assessment_runs/T001_p24_tournament_v1/asr/ASR_A_SMALL_EN/{pair_id}.json"
         asr = _load(asr_path)
-        complete = machine["completeness"]
+        complete = align_completeness(
+            target["scored_passage"], asr["transcript"], "ASR_A_SMALL_EN_COMPETITION_TARGET_V2")
         item = {
             "pair_id": pair_id,
             "display_name": DEMO_LABELS[pair_id],
@@ -367,11 +414,13 @@ def build_demo_cache(root: Path, destination: Path | None = None) -> dict:
             "model_input_ref": source["model_input_ref"],
             "model_input_sha256": source["model_input_sha256"],
             "asr_evidence_sha256": machine["asr_evidence_sha256"],
+            "target_profile_sha256": TARGET_PROFILE_SHA256,
+            "target_topic": target["topic"],
             "scores": {
                 "pronunciation": prediction["pronunciation"],
                 "fluency": prediction["fluency"],
                 "prosody": prediction["prosody"],
-                "completeness": prediction["completeness"]["criterion_score_1_5"],
+                "completeness": round(1 + 4 * complete["coverage"], 4),
             },
             "criterion_status": {
                 "pronunciation": "PRELIMINARY",
@@ -387,7 +436,7 @@ def build_demo_cache(root: Path, destination: Path | None = None) -> dict:
                 "likely_omissions": [],
                 "warning": complete["warning"],
             },
-            "target_text": target["confirmed_text"],
+            "target_text": target["scored_passage"],
             "transcript": asr["transcript"],
             "evidence": {
                 "fluency": {key: machine["fluency_features"].get(key) for key in (
@@ -405,6 +454,7 @@ def build_demo_cache(root: Path, destination: Path | None = None) -> dict:
                 "asr": asr["model_id"],
                 "asr_revision": asr["revision"],
             },
+            "frozen_hashes": frozen,
             "machine_intelligibility": None,
             "overall_score": None,
             "model_failures": [],
@@ -417,6 +467,7 @@ def build_demo_cache(root: Path, destination: Path | None = None) -> dict:
         "created_at_utc": _now(),
         "demo_ids": list(DEMO_IDS),
         "frozen_hashes": frozen,
+        "target_profile_sha256": TARGET_PROFILE_SHA256,
         "items": rows,
         "refit_performed": False,
         "machine_intelligibility": None,
@@ -528,9 +579,10 @@ def run_live_analysis(root: Path, duet_path: Path, work_dir: Path,
     notify("Transcribing measured learner speech")
     transcript = asr.transcribe(audio_path, turn["start_sec"], turn["end_sec"], turn["learner_intervals"])
     fluency_evidence = measure_fluency(turn, transcript["words"])
-    target = _load(root / "task_profiles/T001_target_text_v1.json")
+    target = load_competition_target(root)
+    frozen_multipa_target = _load(root / "task_profiles/T001_target_text_v1.json")["confirmed_text"]
     completeness = align_completeness(
-        target["confirmed_text"], transcript["verbatim_transcript"], "ASR_A_SMALL_EN_LIVE")
+        target["scored_passage"], transcript["verbatim_transcript"], "ASR_A_SMALL_EN_LIVE")
     plan = _load(root / "p25_frozen_mini_validation_plan_v1.json")
     scores: dict[str, float] = {
         "fluency": apply_mapping(plan["criteria"]["fluency"]["mapping"], fluency_evidence),
@@ -540,7 +592,9 @@ def run_live_analysis(root: Path, duet_path: Path, work_dir: Path,
     raw_multipa = None
     raw_chunks: list[dict] = []
     try:
-        chunks = segment_closed_response(transcript["words"], target["confirmed_text"])
+        # The title correction applies only to Reading Completeness. MultiPA keeps
+        # the exact v1 closed-response target used by the frozen scorer.
+        chunks = segment_closed_response(transcript["words"], frozen_multipa_target)
         if not chunks or not all(chunk["valid_for_scoring"] for chunk in chunks):
             raise ValueError("Target alignment is not reliable enough for MultiPA")
         for chunk in chunks:
@@ -588,6 +642,8 @@ def run_live_analysis(root: Path, duet_path: Path, work_dir: Path,
         "fake_or_placeholder_score": False,
         "canonical_source": "RAW_COMPLETED_DUET",
         "audio_source_type": "RAW_CROPPED",
+        "target_profile_sha256": TARGET_PROFILE_SHA256,
+        "target_topic": target["topic"],
         "quality_gate": phase1["quality_gate"],
         "scorability_status": phase1["scorability_status"],
         "holdout": False,
@@ -606,7 +662,7 @@ def run_live_analysis(root: Path, duet_path: Path, work_dir: Path,
             "likely_omissions": [],
             "warning": completeness["warning"],
         },
-        "target_text": target["confirmed_text"],
+        "target_text": target["scored_passage"],
         "transcript": transcript["verbatim_transcript"],
         "evidence": {
             "fluency": {key: fluency_evidence.get(key) for key in (

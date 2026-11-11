@@ -38,12 +38,12 @@ def main() -> int:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1366, "height": 768})
         page.goto(URL)
-        page.get_by_role("button", name="Assess Speaking").wait_for(timeout=60_000)
+        page.get_by_role("button", name="Try a Demo").wait_for(timeout=60_000)
         page.screenshot(path=OUTPUT / "competition-home-1366.png")
         results["home_1366"] = page.evaluate(
             "() => ({viewport_width: innerWidth, document_width: document.documentElement.scrollWidth, "
             "horizontal_overflow: document.documentElement.scrollWidth > innerWidth})")
-        page.get_by_role("button", name="Assess Speaking").click()
+        page.get_by_role("button", name="Try a Demo").click()
         page.get_by_role("button", name="View genuine results").wait_for(timeout=60_000)
         page.screenshot(path=OUTPUT / "competition-assessment-1366.png")
         page.get_by_role("button", name="View genuine results").click()

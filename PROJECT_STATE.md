@@ -1521,3 +1521,27 @@ Final verification: **128 passed, 2 skipped** in the complete normal test suite;
 
 **Next action:** run a full presentation rehearsal with D064, D043 and D048 and inspect Home, Assessment, Results, evidence expanders and failure messaging from the audience/judge perspective. Do not reopen model research or the holdout.
 
+# COMPETITION FINAL PRODUCT SPRINT (2026-11-11)
+
+`COMPETITION_FREEZE_V1` is prepared for the frozen scorer and final product shell. The scorer, checkpoint, Fluency mapping, MultiPA criterion mappings and Completeness algorithm remain unchanged. P2.5 ratings were not used for refit. No machine Intelligibility or Overall was created, and fixed holdout media/outcomes were not opened or processed.
+
+## Target boundary correction
+
+An audit of the authoritative T001 template video verified that the standalone spoken phrase `One memorable event.` is the visible lesson topic/title, while the scored passage begins `One memorable event in my life was my high school graduation.` The original v1 target remains preserved. `competition_target_profile_v2.json` separates `Topic: One memorable event` and excludes only those three title words from Reading Completeness. No other word changed. MultiPA still uses the original v1 target, so Pronunciation and Prosody remain frozen.
+
+The v1 demo cache is retired. `competition_demo_cache_v2.json` is bound to the target-profile hash and contains genuine frozen outputs for D043, D064 and D048 in presentation order. Only Completeness was recomputed with the corrected target boundary.
+
+## Feedback and product experience
+
+The deterministic feedback engine now selects different evidence-based strengths/priorities for the three learners. A second manual GPT-review layer is implemented without automating chatgpt.com. Versioned bundles for D043, D064 and D048 were exported locally under ignored `runs/competition_gpt_review/`; strict import validates video/input/scorer/target/prompt hashes, evidence paths, supported words and safety. Imported wording can never replace scores. Missing/stale review cleanly falls back to deterministic feedback.
+
+The Competition UI now makes D043 the main demo, provides separate Try a Demo and Assess a Duet paths, hides raw MultiPA values from students, separates topic/scored passage/transcript, adds supported word chips, and exposes provenance only through `?presenter=1`. The hero and core score layout remain visually stable.
+
+Full architecture and limitations are in `COMPETITION_FINAL_BUILD_REPORT.md`; the presentation script and recovery steps are in `COMPETITION_REHEARSAL.md`.
+
+**Current blocker:** the three required ChatGPT manual review JSON files have not been supplied. No fake review was created. Deterministic feedback is fully functional offline, but the strict all-demo GPT-review requirement remains pending.
+
+**Next action:** submit each local bundle to ChatGPT manually, import the three returned JSON files, rerun review/hash/UI tests, then perform the final D043-led rehearsal. Do not modify scoring after `COMPETITION_FREEZE_V1`.
+
+Final measured verification for this sprint: competition-focused tests **16 passed**; complete normal suite **132 passed, 2 skipped**; Python compilation passed; Streamlit AppTest passed; and Playwright visual QA passed at 1366x768 and 1920x1080 with no overflow or clipped score/feedback cards. A fresh development-only D064 Live Analysis completed `SCORABLE_CLEAN` with all four supported criteria, no model failure, no machine Intelligibility, no Overall and `holdout_processed=false`. The sole warning is a non-blocking Silero VAD dependency deprecation notice.
+

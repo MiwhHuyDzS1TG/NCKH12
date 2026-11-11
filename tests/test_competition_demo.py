@@ -19,7 +19,21 @@ from speaking_evidence.competition_demo import (
     validate_deterministic_feedback,
     verify_frozen_scorer,
     _write,
+    TARGET_PROFILE_NAME,
+    TARGET_PROFILE_SHA256,
 )
+from speaking_evidence.competition_review import (
+    PROMPT_SHA256,
+    REVIEW_VERSION,
+    ReviewValidationError,
+    export_review_bundle,
+    import_review,
+    load_review_feedback,
+    scorer_fingerprint,
+    selected_feedback,
+    validate_review_payload,
+)
+import speaking_evidence.competition_review as review_module
 from speaking_evidence.competition_demo_ui import _score_card
 
 
@@ -55,6 +69,18 @@ def test_machine_only_cache_has_exact_demo_membership_and_no_private_ratings():
     assert CACHE["overall_score"] is None
     assert not any(any(token in key for token in ("teacher", "human_rating", "validation_rating"))
                    for key in _keys(CACHE))
+    assert tuple(CACHE["demo_ids"]) == ("T001-D043", "T001-D064", "T001-D048")
+
+
+def test_target_title_audit_is_frozen_and_excluded_only_from_completeness():
+    target = json.loads((ROOT / TARGET_PROFILE_NAME).read_text(encoding="utf-8"))
+    assert target["classification"] == "TITLE_TOPIC_LABEL"
+    assert target["topic"] == "One memorable event"
+    assert target["scoring_action"] == "EXCLUDE_TOPIC_FROM_READING_COMPLETENESS"
+    assert target["scored_passage"].startswith("One memorable event in my life")
+    assert not target["scored_passage"].startswith("One memorable event. One memorable event")
+    assert target["scored_word_count"] == 139
+    assert CACHE["target_profile_sha256"] == TARGET_PROFILE_SHA256
 
 
 def test_competition_criteria_are_frozen_and_caveats_are_visible():
@@ -97,6 +123,8 @@ def test_live_path_calls_real_local_pipeline_and_contains_no_fitting_or_rating_a
     assert "RATINGS_PATH" not in source
     assert "development_validation_ratings" not in source
     assert "holdout_processed\": False" in source
+    assert "frozen_multipa_target" in source
+    assert "segment_closed_response(transcript[\"words\"], frozen_multipa_target)" in source
 
 
 def test_invalid_score_never_becomes_a_number():
@@ -157,6 +185,10 @@ def test_cache_hash_guard_accepts_current_inputs_and_rejects_stale_cache():
     stale["frozen_hashes"]["p24d_plan_sha256"] = "0" * 64
     with pytest.raises(StaleDemoCacheError, match="stale"):
         validate_demo_cache(ROOT, stale, verify_media=False)
+    stale_target = copy.deepcopy(CACHE)
+    stale_target["target_profile_sha256"] = "0" * 64
+    with pytest.raises(StaleDemoCacheError, match="target profile"):
+        validate_demo_cache(ROOT, stale_target, verify_media=False)
 
 
 @pytest.mark.skipif(not PRIVATE_DEMO, reason="private local demo media is not distributed")
@@ -166,7 +198,7 @@ def test_all_three_fast_demos_load_and_full_result_page_hides_unsupported_output
     app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=90)
     app.query_params["mode"] = "competition_demo"
     app.run()
-    app.button(key="competition_cta").click().run()
+    app.button(key="competition_demo_cta").click().run()
     app.button(key="competition_fast_run").click().run()
     assert not app.exception
     rendered = " ".join(str(element.value) for group in
@@ -176,10 +208,107 @@ def test_all_three_fast_demos_load_and_full_result_page_hides_unsupported_output
     assert "Preliminary" in rendered
     assert "Intelligibility" not in rendered
     assert "Overall" not in rendered
+    assert "Raw MultiPA" not in rendered
+    assert "Model context score" not in rendered
+    assert "Topic: One memorable event" in rendered
     assert "Experiment controls" not in rendered
     assert [expander.label for expander in app.expander] == [
         "See why you received these scores", "How does the AI work?", "Research validation"
     ]
+
+
+def _valid_review_payload(item, manifest):
+    word = item["evidence"]["word_review_prompts"][0]["word"]
+    return {
+        "review_version": REVIEW_VERSION,
+        "video_id": item["pair_id"],
+        "video_input_sha256": item["model_input_sha256"],
+        "scorer_fingerprint": scorer_fingerprint(item),
+        "target_profile_sha256": TARGET_PROFILE_SHA256,
+        "review_prompt_sha256": PROMPT_SHA256,
+        "review_source": "CHATGPT_MANUAL_REVIEW",
+        "review_timestamp_utc": "2026-11-11T12:00:00+07:00",
+        "strength": "Your reading maintained clear coverage across the passage.",
+        "focus_next": f"Review {word} as a supported practice prompt, not a confirmed error.",
+        "practice_suggestion": f"Say {word} in a phrase, then repeat its full sentence at a natural pace.",
+        "review_words": [word],
+        "supporting_observations": [{
+            "text": "The selected word has lower relative pronunciation evidence.",
+            "evidence_refs": ["pronunciation_evidence.word_review_prompts.0.accuracy_evidence"],
+        }],
+        "uncertainty_notes": ["ASR uncertainty is not a confirmed omission."],
+        "score_contradiction_flags": [],
+        "safe_for_student_display": True,
+    }
+
+
+@pytest.mark.skipif(not PRIVATE_DEMO, reason="private local demo media is not distributed")
+def test_review_bundle_is_machine_only_and_manual(tmp_path):
+    destination = export_review_bundle(ROOT, "T001-D043", tmp_path / "bundle")
+    manifest = json.loads((destination / "bundle_manifest.json").read_text(encoding="utf-8"))
+    evidence = json.loads((destination / "machine_evidence.json").read_text(encoding="utf-8"))
+    assert manifest["teacher_ratings_included"] is False
+    assert manifest["validation_labels_included"] is False
+    assert manifest["holdout_included"] is False
+    assert manifest["chatgpt_automation_used"] is False
+    assert evidence["machine_intelligibility"] is None
+    assert evidence["overall_score"] is None
+    assert (destination / "learner_audio.wav").is_file()
+    assert not any("rating" in key for key in _keys(evidence))
+
+
+@pytest.mark.skipif(not PRIVATE_DEMO, reason="private local demo media is not distributed")
+def test_review_import_is_hash_bound_cannot_override_scores_and_falls_back(tmp_path, monkeypatch):
+    item = load_demo_cache(ROOT, "T001-D043")
+    payload = _valid_review_payload(item, {})
+    validate_review_payload(ROOT, item["pair_id"], copy.deepcopy(payload))
+    source = tmp_path / "review.json"
+    source.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(review_module, "REVIEW_STORE", str(tmp_path / "imported"))
+    destination = import_review(ROOT, source)
+    assert destination.is_file()
+    reviewed = load_review_feedback(ROOT, item)
+    assert reviewed is not None
+    feedback, provenance = reviewed
+    assert feedback["engine"] == "GPT_REVIEWED_PERSONALIZED_FEEDBACK_V1"
+    assert provenance["feedback_source"] == "GPT_REVIEWED_IMPORTED"
+    assert item["scores"] == load_demo_cache(ROOT, "T001-D043")["scores"]
+
+    stale = copy.deepcopy(payload)
+    stale["scorer_fingerprint"] = "0" * 64
+    with pytest.raises(ReviewValidationError, match="provenance"):
+        validate_review_payload(ROOT, item["pair_id"], stale)
+    override = copy.deepcopy(payload)
+    override["focus_next"] = "Your score is 5 / 5."
+    with pytest.raises(ReviewValidationError, match="replace a score"):
+        validate_review_payload(ROOT, item["pair_id"], override)
+    unsupported = copy.deepcopy(payload)
+    unsupported["supporting_observations"][0]["evidence_refs"] = ["invented.phoneme.error"]
+    with pytest.raises(ReviewValidationError, match="missing evidence"):
+        validate_review_payload(ROOT, item["pair_id"], unsupported)
+
+    monkeypatch.setattr(review_module, "REVIEW_STORE", str(tmp_path / "missing"))
+    fallback, fallback_provenance = selected_feedback(ROOT, item)
+    assert fallback["engine"] == "DETERMINISTIC_MEASURED_EVIDENCE_V1"
+    assert fallback_provenance["feedback_source"] == "DETERMINISTIC_FALLBACK"
+
+
+@pytest.mark.skipif(not PRIVATE_DEMO, reason="private local demo media is not distributed")
+def test_presenter_mode_exposes_provenance_without_teacher_data():
+    app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=90)
+    app.query_params["mode"] = "competition_demo"
+    app.query_params["presenter"] = "1"
+    app.run()
+    app.button(key="competition_demo_cta").click().run()
+    app.button(key="competition_fast_run").click().run()
+    assert not app.exception
+    labels = [expander.label for expander in app.expander]
+    assert "Technical details" in labels
+    assert "Presenter tools" in labels
+    rendered = " ".join(str(element.value) for group in
+                        (app.markdown, app.caption, app.info, app.warning, app.error)
+                        for element in group)
+    assert "teacher rating" not in rendered.lower()
 
 
 @pytest.mark.skipif(not PRIVATE_DEMO, reason="private local models are not distributed")

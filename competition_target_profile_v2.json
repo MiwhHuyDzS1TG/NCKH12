@@ -1,0 +1,34 @@
+{
+  "version": "competition-target-v2",
+  "template_id": "T001",
+  "classification": "TITLE_TOPIC_LABEL",
+  "topic": "One memorable event",
+  "topic_sha256": "6aefe3a509b137e03d8a02328730b2c8c4270bbe8ed9e01a187afa645e1ede1a",
+  "scored_passage": "One memorable event in my life was my high school graduation. It happened about three years ago at my school in my hometown. The ceremony took place in the school hall and all my classmates and teachers were there. I remember feeling very excited and proud because it was the result of many years of hard work. My parents also came to support me and they looked very happy. During the ceremony, we wore special gowns and received our certificates. There were speeches, music, and a lot of photos. This event was memorable for me because it marked the end of an important chapter in my life and the beginning of a new one. I felt grown up and ready for new challenges. Even now, when I look at the photos, I feel proud and happy about that day.",
+  "scored_passage_sha256": "66f9e5d49a216b6a660b16d5306a91d84b88d2d1295aca0fa818b7d3488f1bbb",
+  "scored_word_count": 139,
+  "scoring_action": "EXCLUDE_TOPIC_FROM_READING_COMPLETENESS",
+  "original_target_preserved": true,
+  "source_target_version": "T001-target-v1",
+  "source_target_sha256": "a58cbaf8949d47fb1257b828b5dfcb441520b53f414c27cc57ea850bc79924c2",
+  "template_sha256": "586d6e3a52c0029c9bf0e751ad1fa2399b71af4f7359608146cc1b346106caff",
+  "audit_provenance": {
+    "audit_type": "AUTHORITATIVE_TEMPLATE_VISUAL_AUDIO_AUDIT",
+    "auditor_role": "IMPLEMENTATION_ENGINEER",
+    "audit_date": "2026-11-11",
+    "audio_observation": "The template voice speaks the standalone phrase from approximately 0.68 to 2.50 seconds.",
+    "visual_observations": [
+      "At approximately 1 to 2 seconds, One Memorable Event is displayed as a standalone title on the introduction card.",
+      "At approximately 3 seconds, the reading passage begins visually with One memorable event in my life was my high school graduation.",
+      "The standalone title is not included in the displayed passage body."
+    ],
+    "asr_sources": [
+      "human_ground_truth/T001_target_v1/medium.en_transcript.json",
+      "human_ground_truth/T001_target_v1/small.en_transcript.json"
+    ],
+    "template_source": "data/templates/T001/original.mp4",
+    "visible_text_used": true,
+    "other_text_changed": false
+  },
+  "warning": "This is a target-boundary correction only. The Reading Completeness algorithm and every non-completeness scorer remain unchanged."
+}

@@ -1,0 +1,60 @@
+NCKH12 CONTROLLED-READING FEEDBACK REVIEW
+
+Review version: competition-gpt-review-v1
+
+You are reviewing one controlled-reading English speaking sample.
+
+Inputs supplied in this bundle:
+- learner_audio.wav
+- target_text.txt
+- learner_transcript.txt
+- machine_evidence.json
+- bundle_manifest.json
+
+The official machine scores are already frozen. Do not replace, recompute, round, rescale, or suggest alternative numeric scores.
+
+Your task is to produce evidence-grounded formative feedback. Listen to the learner audio and use only the supplied target, transcript, frozen scores, and machine evidence.
+
+Return JSON only with exactly these fields:
+
+{
+  "review_version": "competition-gpt-review-v1",
+  "video_id": "COPY_FROM_BUNDLE_MANIFEST",
+  "video_input_sha256": "COPY_FROM_BUNDLE_MANIFEST",
+  "scorer_fingerprint": "COPY_FROM_BUNDLE_MANIFEST",
+  "target_profile_sha256": "COPY_FROM_BUNDLE_MANIFEST",
+  "review_prompt_sha256": "COPY_FROM_BUNDLE_MANIFEST",
+  "review_source": "CHATGPT_MANUAL_REVIEW",
+  "review_timestamp_utc": "ISO_8601_TIMESTAMP",
+  "strength": "One concise real strength.",
+  "focus_next": "One highest-value supported improvement priority.",
+  "practice_suggestion": "One specific actionable practice activity.",
+  "review_words": [],
+  "supporting_observations": [
+    {
+      "text": "A concise observation supported by supplied evidence.",
+      "evidence_refs": ["A_DOT_PATH_FROM_MACHINE_EVIDENCE_JSON"]
+    }
+  ],
+  "uncertainty_notes": [],
+  "score_contradiction_flags": [],
+  "safe_for_student_display": true
+}
+
+Rules:
+- Write one concise strength, one priority, and one practice activity.
+- Make the feedback specific to this learner when the evidence differs.
+- Use review_words only when learner audio and supplied evidence support them.
+- Treat low-relative-score words as review prompts, not confirmed errors.
+- Distinguish ASR uncertainty from a confirmed learner omission.
+- Do not treat a Vietnamese or non-native accent as inherently wrong.
+- Do not invent grammar, vocabulary, confidence, motivation, or personality problems.
+- Do not claim a phoneme error unless learner audio and evidence support it.
+- Do not create an Intelligibility score.
+- Do not create an Overall score.
+- Do not copy teacher ratings or infer hidden labels.
+- Do not overwrite or contradict the frozen numeric scores.
+- If evidence is ambiguous, state the uncertainty explicitly.
+- Keep strength, focus_next, and practice_suggestion to one or two short sentences each.
+- Every supporting observation must cite one or more real dot paths from machine_evidence.json.
+- Set safe_for_student_display to false if you cannot produce safe supported feedback.
