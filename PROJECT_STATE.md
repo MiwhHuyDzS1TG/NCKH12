@@ -1501,3 +1501,23 @@ The fixed 18-video holdout was not opened, processed or used.
 
 **Next action:** freeze the competition-facing scope as Fluency + deterministic Completeness, retain Pronunciation and Prosody only with explicit preliminary/narrow-range caveats, and move to demo/UI/feedback preparation. Do not tune on the three P2.5 items or open the holdout.
 
+# COMPETITION DEMO MVP (2026-11-07)
+
+The presentation-ready NCKH12 Speaking Coach is complete at `?mode=competition_demo`, with a direct Windows launcher `START_COMPETITION_DEMO.bat`. This is a separate student-facing experience; the research and teacher routes remain available and unchanged.
+
+The UI now provides a polished Home -> Assessment -> Results flow, Fast Demo cards for `T001-D064`, `T001-D043` and `T001-D048`, real local upload analysis, four criterion cards, deterministic formative feedback, an evidence explorer, target/transcript view, simple AI explanation, and a collapsed research-validation panel. Normal users do not see debug JSON, hashes, logs, file paths or stack traces. Responsive browser QA passed at 1366x768 and 1920x1080 with no horizontal overflow or card/text clipping.
+
+The machine-only cache `competition_demo_cache_v1.json` contains genuine frozen-pipeline outputs for exactly D064, D043 and D048. It stores input/scorer/model provenance and deterministic feedback, but no teacher/validation ratings. Both frozen hashes and local media/model-input hashes are revalidated before a known demo is shown; stale cache is rejected.
+
+Live Analysis executes the existing Phase 1 learner extraction, RAW_CROPPED audio preparation, local `small.en` ASR, frozen Fluency/Completeness mappings and frozen local MultiPA inference. A real development-only D064 smoke run completed as `SCORABLE_CLEAN` with all four supported criteria, no model failure, no Intelligibility, no Overall and `holdout_processed=false`. Offline readiness now verifies FFmpeg, faster-whisper and Silero VAD in addition to all local model assets before enabling live scoring.
+
+The competition scope remains unchanged: Pronunciation and Prosody are clearly `Preliminary`; Fluency and ASR-assisted Reading Completeness are the usable criteria; Intelligibility remains `HUMAN_ONLY`; Overall remains absent. No training, refitting, recalibration, threshold change, feature change, P2.5-rating reuse or model reselection occurred. The fixed 18-video holdout was not opened, processed or used.
+
+Full implementation, offline procedure, visual QA and limitations are documented in `COMPETITION_DEMO_MVP_REPORT.md`.
+
+Final verification: **128 passed, 2 skipped** in the complete normal test suite; Python compilation passed; Streamlit AppTest passed; Playwright visual QA passed at both presentation resolutions; genuine live integration passed. The only remaining message is a non-blocking Silero VAD package-resource deprecation warning.
+
+**Current status:** Competition Demo MVP ready for rehearsal.
+
+**Next action:** run a full presentation rehearsal with D064, D043 and D048 and inspect Home, Assessment, Results, evidence expanders and failure messaging from the audience/judge perspective. Do not reopen model research or the holdout.
+

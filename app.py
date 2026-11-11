@@ -649,10 +649,11 @@ def _cohort_dashboard(config: dict) -> None:
                 st.success("Green audit saved; validated." if audit["validated"] else "Green audit saved; gate remains unvalidated.")
 
 
-st.markdown("<div class='lab-kicker'>Phase 1 · Research Console v0.2</div>", unsafe_allow_html=True)
-st.title("Duet Speech Lab")
-st.markdown("<div class='lab-subtitle'>Run the reference-aware segmenter, inspect learner timestamps, "
-            "listen to the original Duet audio, and build human ground truth.</div>", unsafe_allow_html=True)
+if st.query_params.get("mode") != "competition_demo":
+    st.markdown("<div class='lab-kicker'>Phase 1 · Research Console v0.2</div>", unsafe_allow_html=True)
+    st.title("Duet Speech Lab")
+    st.markdown("<div class='lab-subtitle'>Run the reference-aware segmenter, inspect learner timestamps, "
+                "listen to the original Duet audio, and build human ground truth.</div>", unsafe_allow_html=True)
 
 def _phase2_evidence_dashboard() -> None:
     """Read-only view of saved development evidence; never runs a model."""
@@ -1276,6 +1277,11 @@ def _phase2_assessment_result_dashboard() -> None:
 
 
 direct_mode = st.query_params.get("mode")
+if direct_mode == "competition_demo":
+    from speaking_evidence.competition_demo_ui import render_competition_demo
+
+    render_competition_demo(ROOT)
+    st.stop()
 if direct_mode == "teacher":
     st.markdown("<style>section[data-testid='stSidebar']{display:none}</style>", unsafe_allow_html=True)
     _teacher_rating_dashboard()
