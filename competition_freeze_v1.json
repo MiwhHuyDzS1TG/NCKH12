@@ -1,0 +1,63 @@
+{
+  "freeze_version": "COMPETITION_FREEZE_V1",
+  "created_date": "2026-11-11",
+  "status": "SCORER_AND_PRODUCT_FROZEN_GPT_REVIEWS_PENDING",
+  "scorer": {
+    "p24d_plan_sha256": "90755aaa169b605c7b9a070ae411dc28366a2b3e568e4daf2e81dc15a4cee1c1",
+    "multipa_checkpoint_sha256": "cc1f02622c763e82f29d7d4d5a073ed45bf9d829013e2c6cc726371fe2d024e8",
+    "multipa_source_commit": "a8d83ec1d80f9db60e6d32227cb1c562ee5e6022",
+    "fluency_changed": false,
+    "completeness_algorithm_changed": false,
+    "p25_used_for_refit": false,
+    "machine_intelligibility": null,
+    "overall_score": null,
+    "holdout_processed": false
+  },
+  "target": {
+    "version": "competition-target-v2",
+    "profile_sha256": "e2a4b2f1ee77860bab9a1a075d07bf61a27fe9ab641a71719dc129def1fb9da2",
+    "scored_passage_sha256": "66f9e5d49a216b6a660b16d5306a91d84b88d2d1295aca0fa818b7d3488f1bbb",
+    "topic": "One memorable event",
+    "classification": "TITLE_TOPIC_LABEL",
+    "scope_of_change": "READING_COMPLETENESS_TARGET_BOUNDARY_ONLY"
+  },
+  "demo": {
+    "cache_version": "competition-demo-cache-v2",
+    "cache_sha256": "bb842abdd7d92a4022c6bc30e43d3603dab5625d505cbc7dca5c8a3dc4f09bdd",
+    "ids_in_presentation_order": [
+      "T001-D043",
+      "T001-D064",
+      "T001-D048"
+    ],
+    "startup_command": "START_COMPETITION_DEMO.bat",
+    "route": "?mode=competition_demo"
+  },
+  "feedback": {
+    "deterministic_version": "DETERMINISTIC_MEASURED_EVIDENCE_V1",
+    "gpt_review_prompt_version": "competition-gpt-review-v1",
+    "gpt_review_prompt_sha256": "415354a8d9c5fe391587d02209264b49b88fcf2316df9b3eab820f0fb61111aa",
+    "imported_review_hashes": {},
+    "pending_manual_reviews": [
+      "T001-D043",
+      "T001-D064",
+      "T001-D048"
+    ],
+    "runtime_fallback": "DETERMINISTIC_FALLBACK",
+    "chatgpt_website_automation_used": false
+  },
+  "ui": {
+    "version": "competition-ui-v2",
+    "commit": "d72e360eb1080a010fe08735ad94f8ac233a746c",
+    "base_commit": "393c658ed4e2613b5d1cdc5fcc4410d0ee0d759d",
+    "competition_demo_sha256": "eca26bbd5949ba841c4f31b4cbff4edfa8cc056f0f63e4a610632bc65837bca2",
+    "competition_demo_ui_sha256": "34a7e10f557b8205371cf411be1eda69c5966baac4c95cd550214dbffbc00cca",
+    "competition_review_sha256": "ede6ea29fe90ae09373b20e0be0b5396b71c3255e7bf1335c455a2d0648137f8"
+  },
+  "known_limitations": [
+    "Pronunciation and Prosody are preliminary.",
+    "Reading Completeness is ASR-assisted and uncertainty is not a confirmed omission.",
+    "Intelligibility remains human-only.",
+    "No Overall, CEFR, IELTS, or standardized proficiency score exists.",
+    "The three manual GPT reviews are not yet imported; deterministic feedback remains active."
+  ]
+}
