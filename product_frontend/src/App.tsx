@@ -21,14 +21,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from './api'
-import type { AssessmentResult, Bootstrap, CriterionKey, DemoSummary, JobState, MediaItem } from './types'
-
-const criterionCopy: Record<CriterionKey, { title: string; description: string; note: string }> = {
-  fluency: { title: 'Fluency', description: 'Flow, continuity and pausing', note: 'Usable competition criterion' },
-  completeness: { title: 'Reading Completeness', description: 'Target passage matched by ASR', note: 'ASR-assisted coverage' },
-  pronunciation: { title: 'Pronunciation', description: 'Sound accuracy and clarity', note: 'Preliminary, narrow-range' },
-  prosody: { title: 'Prosody', description: 'Stress, rhythm and intonation', note: 'Preliminary' },
-}
+import type { AssessmentResult, Bootstrap, CriterionView, DemoSummary, JobState, MediaItem } from './types'
 
 function useBootstrap() {
   const [data, setData] = useState<Bootstrap | null>(null)
@@ -324,13 +317,18 @@ function AnalysisState({ job }: { job: JobState }) {
 function Results() {
   const { source = '', id = '' } = useParams()
   const navigate = useNavigate()
-  const [result, setResult] = useState<AssessmentResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const routeKey = `${source}:${id}`
+  const [loaded, setLoaded] = useState<{ key: string; result: AssessmentResult | null; error: string | null }>({ key: '', result: null, error: null })
   useEffect(() => {
-    setResult(null); setError(null)
+    let active = true
     const promise = source === 'demo' ? api.demoResult(id) : source === 'media' ? api.mediaResult(id) : Promise.reject(new Error('Unknown result source.'))
-    promise.then(setResult).catch((reason) => setError(reason instanceof Error ? reason.message : 'Result is unavailable.'))
-  }, [source, id])
+    promise
+      .then((result) => { if (active) setLoaded({ key: routeKey, result, error: null }) })
+      .catch((reason) => { if (active) setLoaded({ key: routeKey, result: null, error: reason instanceof Error ? reason.message : 'Result is unavailable.' }) })
+    return () => { active = false }
+  }, [source, id, routeKey])
+  const result = loaded.key === routeKey ? loaded.result : null
+  const error = loaded.key === routeKey ? loaded.error : null
   if (error) return <div className="state-page"><ErrorNotice message={error} /><button className="button primary" onClick={() => navigate('/assess')}>Return to assessment</button></div>
   if (!result) return <div className="state-page"><span className="activity-ring dark" /><h1>Opening your speaking snapshot</h1></div>
   if (result.status === 'NOT_SCORABLE') return <div className="state-page"><WarningCircle size={42} /><h1>This recording could not be scored reliably.</h1><p>Try a completed Duet with a clearer learner voice and less background interference.</p><button className="button primary" onClick={() => navigate('/assess')}>Try another video</button></div>
@@ -341,7 +339,7 @@ function ResultStory({ result }: { result: AssessmentResult }) {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const [evidenceOpen, setEvidenceOpen] = useState(false)
-  const completeness = Math.round((result.completeness?.coverage ?? 0) * 100)
+  const criteria = result.criteria.items
   const feedback = result.feedback
   return (
     <article className="result-story">
@@ -355,14 +353,14 @@ function ResultStory({ result }: { result: AssessmentResult }) {
 
       <section className="criteria-story" aria-labelledby="criteria-title">
         <div className="criteria-heading"><p className="kicker">Four views, one recording</p><h2 id="criteria-title">What the evidence noticed.</h2><p>The summary above is descriptive. Each criterion below keeps its own scientific status.</p></div>
-        <CriterionFeature name="fluency" value={result.scores.fluency} evidence={result.evidence.fluency} />
+        <CriterionFeature criterion={criteria.fluency} evidence={result.evidence.fluency} />
         <div className="criterion-reading">
-          <div className="criterion-number"><span>{completeness}</span><sup>%</sup></div>
-          <div><p className="criterion-index">02</p><h3>Reading Completeness</h3><p>{result.completeness.matched_word_count} target words matched in sequence. Differences may include ASR uncertainty and are not confirmed learner errors.</p><span className="status-tag measured">ASR-assisted coverage</span></div>
+          <div className={`criterion-number ${criteria.completeness.available ? '' : 'unavailable'}`}>{criteria.completeness.available ? <><span>{criteria.completeness.display_value}</span><sup>%</sup></> : <span>Unavailable</span>}</div>
+          <div><h3>{criteria.completeness.label}</h3><p>{criteria.completeness.available ? `${result.completeness.matched_word_count} target words matched in sequence. Differences may include ASR uncertainty and are not confirmed learner errors.` : 'This measure could not be produced for this recording.'}</p><span className="status-tag measured">{criteria.completeness.badge}</span></div>
         </div>
         <div className="criterion-pair">
-          <CriterionEditorial name="pronunciation" value={result.scores.pronunciation} index="03" prompts={result.evidence.word_review_prompts} />
-          <CriterionEditorial name="prosody" value={result.scores.prosody} index="04" />
+          <CriterionEditorial criterion={criteria.pronunciation} prompts={result.evidence.word_review_prompts} />
+          <CriterionEditorial criterion={criteria.prosody} />
         </div>
       </section>
 
@@ -399,7 +397,7 @@ function ResultStory({ result }: { result: AssessmentResult }) {
 function OverallPractice({ overall }: { overall: AssessmentResult['overall_practice_score'] }) {
   const [params] = useSearchParams()
   const reduced = useReducedMotion()
-  if (!overall) return <div className="overall-unavailable"><strong>Overall Practice Score unavailable</strong><span>All four measures are required for this product summary.</span></div>
+  if (!overall) return <div className="overall-unavailable"><strong>Overall Practice Score unavailable</strong><span>Overall Practice Score requires all four assessment measures.</span></div>
   return (
     <motion.div className="overall-practice" initial={reduced ? false : { opacity: 0, filter: 'blur(8px)', scale: .98 }} animate={{ opacity: 1, filter: 'blur(0px)', scale: 1 }} transition={{ duration: .45, delay: .18 }}>
       <div className="overall-value"><span>{overall.display_value.toFixed(1)}</span><sup>/ 5</sup></div>
@@ -408,14 +406,12 @@ function OverallPractice({ overall }: { overall: AssessmentResult['overall_pract
   )
 }
 
-function CriterionFeature({ name, value, evidence }: { name: CriterionKey; value?: number; evidence: Record<string, number | null> }) {
-  const copy = criterionCopy[name]
-  return <motion.div className="criterion-feature" initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: .2 }} transition={{ duration: .45 }}><div className="feature-top"><p className="criterion-index">01</p><span className="status-tag measured">{copy.note}</span></div><div className="feature-score"><span>{value?.toFixed(1) ?? 'N/A'}</span>{value != null && <sup>/ 5</sup>}</div><h3>{copy.title}</h3><p>{copy.description}</p><div className="signal-line" aria-hidden="true">{Array.from({ length: 38 }, (_, index) => <i key={index} style={{ height: `${12 + ((index * 29) % 76)}%` }} />)}</div><div className="feature-facts"><span>{formatEvidence(evidence.speech_rate_wpm, ' wpm')} <small>speech rate</small></span><span>{formatEvidence(evidence.long_pause_count)} <small>long pauses</small></span></div></motion.div>
+function CriterionFeature({ criterion, evidence }: { criterion: CriterionView; evidence: Record<string, number | null> }) {
+  return <motion.div className="criterion-feature" initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: .2 }} transition={{ duration: .45 }}><div className="feature-top"><span className="status-tag measured">{criterion.badge}</span></div><div className={`feature-score ${criterion.available ? '' : 'unavailable'}`}><span>{criterion.available ? criterion.display_value?.toFixed(1) : 'Unavailable'}</span>{criterion.available && <sup>/ 5</sup>}</div><h3>{criterion.label}</h3><p>{criterion.available ? criterion.description : 'This measure could not be produced for this recording.'}</p><div className="signal-line" aria-hidden="true">{Array.from({ length: 38 }, (_, index) => <i key={index} style={{ height: `${12 + ((index * 29) % 76)}%` }} />)}</div><div className="feature-facts"><span>{formatEvidence(evidence.speech_rate_wpm, ' wpm')} <small>speech rate</small></span><span>{formatEvidence(evidence.long_pause_count)} <small>long pauses</small></span></div></motion.div>
 }
 
-function CriterionEditorial({ name, value, index, prompts = [] }: { name: CriterionKey; value?: number; index: string; prompts?: { word: string }[] }) {
-  const copy = criterionCopy[name]
-  return <div className={`criterion-editorial ${name}`}><div><p className="criterion-index">{index}</p><span className="status-tag preliminary">{copy.note}</span></div><div className="editorial-score">{value?.toFixed(1) ?? 'N/A'}<small>{value != null ? '/ 5' : ''}</small></div><h3>{copy.title}</h3><p>{copy.description}</p>{prompts.length > 0 && <div className="mini-prompts">{prompts.slice(0, 3).map((row) => <span key={row.word}>{row.word}</span>)}</div>}</div>
+function CriterionEditorial({ criterion, prompts = [] }: { criterion: CriterionView; prompts?: { word: string }[] }) {
+  return <div className={`criterion-editorial ${criterion.key}`}><h3>{criterion.label}</h3><div className={`editorial-score ${criterion.available ? '' : 'unavailable'}`}>{criterion.available ? criterion.display_value?.toFixed(1) : 'Unavailable'}<small>{criterion.available ? '/ 5' : ''}</small></div><span className="status-tag preliminary" title={criterion.caveat ?? undefined}>{criterion.badge}</span><p>{criterion.available ? criterion.description : 'This measure could not be produced for this recording.'}</p>{prompts.length > 0 && criterion.available && <><strong className="mini-prompts-label">Words to review</strong><div className="mini-prompts">{prompts.slice(0, 3).map((row) => <span key={row.word}>{row.word}</span>)}</div></>}</div>
 }
 
 function FeedbackNote({ index, label, text, tone }: { index: string; label: string; text: string; tone: string }) {

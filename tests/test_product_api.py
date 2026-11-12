@@ -46,7 +46,8 @@ def test_demo_api_uses_exact_frozen_values_and_hides_private_evidence() -> None:
         response = client.get("/api/demos/T001-D043")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["scores"] == source["scores"]
+    for key in ("pronunciation", "fluency", "prosody"):
+        assert payload["criteria"]["items"][key]["value"] == source["scores"][key]
     overall = payload["overall_practice_score"]
     expected_completeness = 1 + 4 * source["completeness"]["coverage"]
     expected = (source["scores"]["pronunciation"] + source["scores"]["fluency"]
@@ -63,6 +64,27 @@ def test_demo_api_uses_exact_frozen_values_and_hides_private_evidence() -> None:
         "teacher", "human_rating", "validation_rating", "local_path",
         "frozen_hashes", "raw_multipa", "internal_reason",
     ))
+
+
+@pytest.mark.parametrize("pair_id", ["T001-D043", "T001-D064", "T001-D048"])
+def test_demo_criterion_contract_binds_all_four_frozen_measures(pair_id: str) -> None:
+    source = load_demo_cache(ROOT, pair_id, verify_media=False)
+    with TestClient(product_api.app) as client:
+        payload = client.get(f"/api/demos/{pair_id}").json()
+    criteria = payload["criteria"]
+    assert criteria["version"] == product_api.CRITERION_CONTRACT_VERSION
+    items = criteria["items"]
+    for key in ("pronunciation", "fluency", "prosody"):
+        assert items[key]["available"] is True
+        assert items[key]["unit"] == "SCALE_1_5"
+        assert items[key]["value"] == source["scores"][key]
+        assert items[key]["display_value"] == round(source["scores"][key], 1)
+    expected_percent = source["completeness"]["coverage"] * 100
+    assert items["completeness"]["available"] is True
+    assert items["completeness"]["unit"] == "PERCENT"
+    assert items["completeness"]["value"] == expected_percent
+    assert items["completeness"]["display_value"] == round(expected_percent)
+    assert items["pronunciation"]["badge"] == "Preliminary"
 
 
 def test_result_serializer_drops_internal_failure_and_paths() -> None:
@@ -97,6 +119,9 @@ def test_result_serializer_drops_internal_failure_and_paths() -> None:
     assert "raw_multipa" not in rendered
     assert payload["model_failures"] == [{"public_message": "Pronunciation is unavailable."}]
     assert payload["overall_practice_score"] is None
+    assert payload["criteria"]["items"]["fluency"]["display_value"] == 4.0
+    assert payload["criteria"]["items"]["pronunciation"]["available"] is False
+    assert payload["criteria"]["items"]["pronunciation"]["display_value"] is None
 
 
 @pytest.mark.parametrize(("coverage", "expected"), [(1.0, 5.0), (0.5, 3.0), (0.0, 1.0)])

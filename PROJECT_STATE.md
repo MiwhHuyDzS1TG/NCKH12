@@ -1591,3 +1591,17 @@ Architecture, visual decisions, evidence and rollback are documented in `UI_REDE
 
 **Next action:** restart `START_COMPETITION_DEMO.bat`, inspect Home/Assessment/Results/Recent on the presentation computer, and optionally test one user-authorized TikTok URL. Do not reopen scorer research or the holdout.
 
+# COMPETITION PRODUCT V3 - RESULTS CONTRACT CORRECTION (2026-11-12)
+
+The React Results/API integration now uses one explicit, versioned criterion contract (`nckh12-product-criteria-v1`) for Pronunciation, Fluency, Prosody and ASR-assisted Reading Completeness. Each item declares its numeric value or null, display value, unit, availability, scientific status, badge and caveat. React no longer guesses across parallel score fields. Decorative criterion indexes (`01`-`04`) were removed from criterion modules because they could be mistaken for scores.
+
+Real frozen demo verification confirms Pronunciation displays as D043 `3.8 / 5`, D064 `3.8 / 5` and D048 `3.9 / 5`, with genuine Fluency, Prosody, Reading Completeness and Overall Practice Score values still supplied by the backend. A genuine private `PARTIAL` result was also exercised: valid Fluency and Completeness remained visible, absent Pronunciation and Prosody displayed the quieter term `Unavailable`, and Overall remained unavailable because all four measures are required. No score was fabricated and `N/A` is no longer shown to learners.
+
+Final verification: frontend unit **4 passed**; TypeScript **PASS**; ESLint **PASS**; production build **PASS** (537 modules); focused adapter/Product V2/competition tests **74 passed**; full Python suite **190 passed, 2 skipped**; Python compilation **PASS**; browser QA **PASS** for all three complete demos and the genuine partial result, including D043 desktop/mobile with no horizontal overflow or missing images. Safe demo screenshots were refreshed under `ui_evidence/after/`; the privacy-masked partial screenshot remains local and ignored.
+
+The frozen scorer, calibration, P2.5, MultiPA, Fluency, Prosody, Completeness, target, split and fixed holdout are unchanged. No machine Intelligibility was added and no holdout media/outcome was opened or processed.
+
+**Current status:** Results contract/UI correction verified and ready for rehearsal.
+
+**Next action:** restart `START_COMPETITION_DEMO.bat` and rehearse D043, D064, D048 plus one Recent Video partial result. Do not modify scoring or open the holdout.
+

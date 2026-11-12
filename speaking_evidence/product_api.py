@@ -46,6 +46,7 @@ _jobs_lock = threading.Lock()
 _auth_lock = threading.Lock()
 _auth_state: dict[str, str | None] = {"state": "IDLE", "message": None}
 OVERALL_PRACTICE_VERSION = "nckh12-product-overall-practice-v1"
+CRITERION_CONTRACT_VERSION = "nckh12-product-criteria-v1"
 
 
 class TikTokRequest(BaseModel):
@@ -154,6 +155,66 @@ def build_overall_practice_score(scores: dict, completeness: dict) -> dict | Non
     }
 
 
+def build_criterion_contract(result: dict) -> dict:
+    """Normalize criterion presentation once at the product API boundary."""
+    scores = result.get("scores", {}) if isinstance(result.get("scores"), dict) else {}
+    statuses = (result.get("criterion_status", {})
+                if isinstance(result.get("criterion_status"), dict) else {})
+    copy = {
+        "pronunciation": (
+            "Pronunciation", "Sound accuracy and clarity", "Preliminary",
+            "Based on a limited development score range.",
+        ),
+        "fluency": (
+            "Fluency", "Flow, continuity and pausing", "Usable criterion", None,
+        ),
+        "prosody": (
+            "Prosody", "Stress, rhythm and intonation", "Preliminary",
+            "This measure remains development-stage evidence.",
+        ),
+    }
+    criteria: dict[str, dict] = {}
+    for key, (label, description, badge, caveat) in copy.items():
+        raw = scores.get(key)
+        available = (isinstance(raw, (int, float)) and not isinstance(raw, bool)
+                     and math.isfinite(float(raw)) and 1.0 <= float(raw) <= 5.0)
+        value = float(raw) if available else None
+        criteria[key] = {
+            "key": key,
+            "label": label,
+            "description": description,
+            "value": value,
+            "display_value": round(value, 1) if value is not None else None,
+            "unit": "SCALE_1_5",
+            "scale_max": 5,
+            "available": available,
+            "status": str(statuses.get(key, "UNAVAILABLE")),
+            "badge": badge,
+            "caveat": caveat,
+        }
+
+    completeness = (result.get("completeness", {})
+                    if isinstance(result.get("completeness"), dict) else {})
+    coverage = completeness.get("coverage")
+    available = (isinstance(coverage, (int, float)) and not isinstance(coverage, bool)
+                 and math.isfinite(float(coverage)) and 0.0 <= float(coverage) <= 1.0)
+    percent = float(coverage) * 100.0 if available else None
+    criteria["completeness"] = {
+        "key": "completeness",
+        "label": "Reading Completeness",
+        "description": "Target passage matched by ASR",
+        "value": percent,
+        "display_value": round(percent) if percent is not None else None,
+        "unit": "PERCENT",
+        "scale_max": 100,
+        "available": available,
+        "status": str(statuses.get("completeness", "UNAVAILABLE")),
+        "badge": "ASR-assisted coverage",
+        "caveat": "ASR differences are not confirmed learner reading errors.",
+    }
+    return {"version": CRITERION_CONTRACT_VERSION, "items": criteria}
+
+
 def _serialize_result(result: dict, *, result_id: str, video_url: str, audio_url: str | None) -> dict:
     failures = [
         {"public_message": str(row.get("public_message", "One criterion is unavailable."))}
@@ -170,8 +231,7 @@ def _serialize_result(result: dict, *, result_id: str, video_url: str, audio_url
         "target_topic": result.get("target_topic", "One memorable event"),
         "target_text": result.get("target_text", ""),
         "transcript": result.get("transcript", ""),
-        "scores": result.get("scores", {}),
-        "criterion_status": result.get("criterion_status", {}),
+        "criteria": build_criterion_contract(result),
         "completeness": result.get("completeness", {}),
         "evidence": {
             "fluency": result.get("evidence", {}).get("fluency", {}),

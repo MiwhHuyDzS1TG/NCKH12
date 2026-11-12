@@ -15,7 +15,8 @@
   },
   "architecture": {
     "api_schema_version": "nckh12-product-api-v1",
-    "api_adapter_sha256": "a5655b0f0fe850dd83b86e337070b6ed907371c3f9c4f863a973fd0354ef7b41",
+    "criterion_contract_version": "nckh12-product-criteria-v1",
+    "api_adapter_sha256": "48bd8c8eb096a15ce77ab9e7d96e213afe9e937187198d25e9f7995f503f2bce",
     "react": "19.3.1",
     "typescript": "5.9.3",
     "vite": "7.3.8",
@@ -31,11 +32,11 @@
     "research_artifact": false
   },
   "production_build": {
-    "index_sha256": "522b0193b36327590139219fb01c912ac1f3c13afa64a4ddb315a292fac3fa6b",
-    "javascript": "assets/index-c6rOrtUw.js",
-    "javascript_sha256": "e11edaee2501a393564eb698ef05058d73f6a094a9690078fa12d5f58a9f79b4",
-    "css": "assets/index-6ab0WzQI.css",
-    "css_sha256": "a30d762afc6b53eb517cddb7c598e44520d4397de99a74c8fd85981c547ed9cc",
+    "index_sha256": "e9f6d3113c3da55497379b9ea3df7827851d6dafc496d111e8b26d1c65e8f0fd",
+    "javascript": "assets/index-OtP8smqZ.js",
+    "javascript_sha256": "fbb51bce57920ef6858e8b47fb459873752354abc26ef89c259ad277c1fc892b",
+    "css": "assets/index-Bwo6NRW2.css",
+    "css_sha256": "99bb3ee82cc496887b5f9e1be1db835a992f655873feeab06f754cea15fe255c",
     "normal_launch_requires_node": false
   },
   "design_asset": {
@@ -61,15 +62,15 @@
   ],
   "verification": {
     "status": "PASS",
-    "frontend_unit": "2 passed",
+    "frontend_unit": "4 passed",
     "frontend_typecheck": "PASS",
     "frontend_lint": "PASS",
     "frontend_production_build": "PASS - 537 modules",
-    "targeted_python": "71 passed",
-    "full_python": "187 passed, 2 skipped, 1 third-party deprecation warning",
+    "targeted_python": "74 passed",
+    "full_python": "190 passed, 2 skipped, 1 third-party deprecation warning",
     "streamlit_apptest_targeted": "46 passed",
     "python_compilation": "PASS",
-    "browser_visual_and_interaction_qa": "PASS",
+    "browser_visual_and_interaction_qa": "PASS - complete and genuine partial Results",
     "real_numpy_assessment_path": "PASS",
     "react_launcher": "PASS",
     "legacy_launcher": "PASS",

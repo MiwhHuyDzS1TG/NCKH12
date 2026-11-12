@@ -34,6 +34,20 @@ export interface FeedbackBlock {
   evidence_refs?: string[]
 }
 
+export interface CriterionView {
+  key: CriterionKey
+  label: string
+  description: string
+  value: number | null
+  display_value: number | null
+  unit: 'SCALE_1_5' | 'PERCENT'
+  scale_max: 5 | 100
+  available: boolean
+  status: string
+  badge: string
+  caveat: string | null
+}
+
 export interface AssessmentResult {
   id: string
   pair_id: string
@@ -43,8 +57,10 @@ export interface AssessmentResult {
   target_topic: string
   target_text: string
   transcript: string
-  scores: Partial<Record<CriterionKey, number>>
-  criterion_status: Partial<Record<CriterionKey, string>>
+  criteria: {
+    version: string
+    items: Record<CriterionKey, CriterionView>
+  }
   completeness: {
     coverage: number
     matched_word_count: number
