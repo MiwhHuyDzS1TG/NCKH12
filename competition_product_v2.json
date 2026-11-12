@@ -1,0 +1,62 @@
+{
+  "product_build": "COMPETITION_PRODUCT_V2",
+  "created_date": "2026-11-12",
+  "status": "READY_FOR_USER_AUTHORIZATION",
+  "base_freeze": {
+    "version": "COMPETITION_FREEZE_V1",
+    "freeze_file_sha256": "0b73719689c9805de741fedb233ef60eb039a8fc220c0e629ea9640b2f47f50d",
+    "frozen_scorer_sha256": "90755aaa169b605c7b9a070ae411dc28366a2b3e568e4daf2e81dc15a4cee1c1",
+    "scorer_changed": false,
+    "p25_used_for_refit": false,
+    "holdout_processed": false,
+    "machine_intelligibility": null,
+    "overall_score": null
+  },
+  "target": {
+    "version": "competition-target-v2",
+    "profile_sha256": "e2a4b2f1ee77860bab9a1a075d07bf61a27fe9ab641a71719dc129def1fb9da2",
+    "scored_passage_sha256": "66f9e5d49a216b6a660b16d5306a91d84b88d2d1295aca0fa818b7d3488f1bbb"
+  },
+  "chatgpt_feedback": {
+    "oauth_implementation_version": "nckh12-sign-in-with-chatgpt-v1",
+    "feedback_version": "competition-auto-feedback-v1",
+    "prompt_version": "nckh12-auto-feedback-prompt-v1",
+    "schema_sha256": "ab32e0b734971d5320a477956191bc060bd4049e2e4e524bbcc1bb7ddec08ad4",
+    "store": false,
+    "stream": true,
+    "text_evidence_only": true,
+    "numeric_score_override_allowed": false,
+    "audio_or_video_transmitted": false,
+    "real_account_smoke_test": "PENDING_USER_AUTHORIZATION",
+    "real_feedback_smoke_test": "PENDING_USER_AUTHORIZATION"
+  },
+  "media_library": {
+    "schema_version": "nckh12-user-media-v1",
+    "tiktok_importer_version": "yt-dlp-2026.7.4",
+    "new_media_data_class": "UNSEEN_USER_MEDIA",
+    "research_membership": false,
+    "real_tiktok_import_smoke_test": "PENDING_USER_TEST_URL"
+  },
+  "ui": {
+    "source_commit": "f6dba211b377866423209a96a0496d022e94b0f1",
+    "competition_demo_sha256": "790b828c0f2624a5f6de2779d0a1089bd3fbf59505447523d81683e1b8f7d16a",
+    "competition_demo_ui_sha256": "8ad13f97d506e7a21b0366e3b1ef823e1a0bedfbf48a244ad7d8cb1f55d8dc3a",
+    "competition_review_sha256": "3f3dd5cc447964010afbed0d56c4bd803431fbd410fcdecd0716879b139e35af",
+    "chatgpt_auth_sha256": "eb46c8f30acfb5749075a123ac4bf74c3553ae62f07e99b7a8c21328d8b7a9df",
+    "chatgpt_feedback_sha256": "19ef6d78e713dd4e95cba52a2b018c3030c6b453dbf4fa13fc6e4dd23f2119aa",
+    "media_library_sha256": "304e860ddc13eb23ab6e2dd9b3ff873d1e5d02f0b492c341fe93b3820908db55"
+  },
+  "verification": {
+    "chatgpt_targeted": "16 passed",
+    "media_targeted": "17 passed",
+    "competition_targeted": "19 passed",
+    "full_suite": "168 passed, 2 skipped, 1 third-party deprecation warning",
+    "python_compilation": "PASS",
+    "streamlit_apptest": "PASS",
+    "visual_qa": [
+      "1366x768 PASS",
+      "1920x1080 PASS"
+    ],
+    "real_local_media_io": "PASS"
+  }
+}

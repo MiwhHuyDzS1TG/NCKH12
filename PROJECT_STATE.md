@@ -1555,7 +1555,7 @@ The Assessment workspace accepts direct upload and permission-gated public TikTo
 
 Automated OpenAI/TikTok tests are mocked and consume no real external quota. Real ChatGPT authorization and one real feedback generation are `PENDING_USER_AUTHORIZATION`; real TikTok import is `PENDING_USER_TEST_URL`. These are human-operated smoke tests, not code failures. Offline app launch, Fast Demo, upload/library operation, frozen local scoring, deterministic feedback, and valid cached feedback remain supported; new TikTok import and new remote feedback require network access.
 
-Reports: `CHATGPT_AUTOMATIC_FEEDBACK_REPORT.md` and `MEDIA_IMPORT_LIBRARY_REPORT.md`. Product marker: `competition_product_v2.json` after final source commit/hash capture.
+Reports: `CHATGPT_AUTOMATIC_FEEDBACK_REPORT.md` and `MEDIA_IMPORT_LIBRARY_REPORT.md`. `competition_product_v2.json` records `COMPETITION_PRODUCT_V2`, source commit `f6dba211b377866423209a96a0496d022e94b0f1`, the frozen scorer/target hashes, Product V2 module hashes, protocol/schema versions, and truthful pending human smoke-test states.
 
 Final measured Product V2 verification: ChatGPT integration **16 passed**; media/TikTok/library **17 passed**; competition UI/pipeline **19 passed**; full normal suite **168 passed, 2 skipped**; Python compilation and Streamlit AppTest passed; real local media-I/O smoke passed; and browser QA passed at 1366x768 and 1920x1080 with no horizontal overflow or clipping. The single warning is the existing non-blocking Silero VAD dependency deprecation notice.
 
