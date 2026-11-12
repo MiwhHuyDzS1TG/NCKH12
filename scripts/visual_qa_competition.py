@@ -43,6 +43,41 @@ def main() -> int:
         results["home_1366"] = page.evaluate(
             "() => ({viewport_width: innerWidth, document_width: document.documentElement.scrollWidth, "
             "horizontal_overflow: document.documentElement.scrollWidth > innerWidth})")
+
+        assessment = browser.new_page(viewport={"width": 1366, "height": 768})
+        assessment.goto(URL)
+        assessment.get_by_role("button", name="Assess a Duet").wait_for(timeout=60_000)
+        assessment.get_by_role("button", name="Assess a Duet").click()
+        assessment.get_by_text("No recent videos yet").wait_for(timeout=60_000)
+        assessment.screenshot(path=OUTPUT / "competition-assessment-v2-1366.png", full_page=True)
+        results["assessment_1366"] = assessment.evaluate(
+            "() => ({viewport_width: innerWidth, document_width: document.documentElement.scrollWidth, "
+            "horizontal_overflow: document.documentElement.scrollWidth > innerWidth})")
+        assessment.set_viewport_size({"width": 1920, "height": 1080})
+        assessment.wait_for_timeout(400)
+        assessment.screenshot(path=OUTPUT / "competition-assessment-v2-1920.png", full_page=True)
+        results["assessment_1920"] = assessment.evaluate(
+            "() => ({viewport_width: innerWidth, document_width: document.documentElement.scrollWidth, "
+            "horizontal_overflow: document.documentElement.scrollWidth > innerWidth})")
+        assessment.close()
+
+        settings = browser.new_page(viewport={"width": 1366, "height": 768})
+        settings.goto(f"{URL}&presenter=1")
+        settings.get_by_role("button", name="Assess a Duet").wait_for(timeout=60_000)
+        settings.get_by_role("button", name="Assess a Duet").click()
+        settings.get_by_text("Personalized feedback settings").click()
+        settings.get_by_role("button", name="Continue with ChatGPT").wait_for(timeout=60_000)
+        settings.screenshot(path=OUTPUT / "competition-feedback-settings-1366.png", full_page=True)
+        results["feedback_settings_1366"] = settings.evaluate(
+            "() => ({viewport_width: innerWidth, document_width: document.documentElement.scrollWidth, "
+            "horizontal_overflow: document.documentElement.scrollWidth > innerWidth, "
+            "continue_buttons: [...document.querySelectorAll('button')].filter((node) => "
+            "node.textContent.includes('Continue with ChatGPT')).length, "
+            "continue_visible: [...document.querySelectorAll('button')].filter((node) => "
+            "node.textContent.includes('Continue with ChatGPT')).every((node) => { const r = "
+            "node.getBoundingClientRect(); return r.width > 0 && r.height > 0; })})")
+        settings.close()
+
         page.get_by_role("button", name="Try a Demo").click()
         page.get_by_role("button", name="View genuine results").wait_for(timeout=60_000)
         page.screenshot(path=OUTPUT / "competition-assessment-1366.png")
@@ -58,6 +93,10 @@ def main() -> int:
         browser.close()
     print(json.dumps(results, indent=2))
     if any(result.get("horizontal_overflow") for result in results.values()):
+        return 1
+    if results["feedback_settings_1366"]["continue_buttons"] != 1:
+        return 1
+    if not results["feedback_settings_1366"]["continue_visible"]:
         return 1
     if any(card.get("clipped") for key in ("results_1366", "results_1920")
            for card in results[key]["score_cards"]):

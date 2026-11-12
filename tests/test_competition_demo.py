@@ -176,6 +176,86 @@ def test_competition_landing_isolated_from_research_console():
     assert "CUDA" not in rendered and "FFmpeg" not in rendered
 
 
+def test_assessment_workspace_has_tiktok_upload_recent_and_empty_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("NCKH12_APP_DATA", str(tmp_path / "app-data"))
+    app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60)
+    app.query_params["mode"] = "competition_demo"
+    app.run()
+    app.button(key="competition_upload_cta").click().run()
+    assert not app.exception
+    rendered = " ".join(str(element.value) for group in
+                        (app.markdown, app.caption, app.info, app.warning, app.error)
+                        for element in group)
+    assert "Assessment workspace" in rendered
+    assert "Recent videos" in rendered
+    assert "No recent videos yet" in rendered
+    assert any(widget.label == "TikTok video URL" for widget in app.text_input)
+    assert any(widget.label == "Choose video" for widget in app.file_uploader)
+    assert "Experiment controls" not in rendered
+
+
+def test_presenter_assessment_exposes_discreet_chatgpt_settings_only(tmp_path, monkeypatch):
+    monkeypatch.setenv("NCKH12_APP_DATA", str(tmp_path / "app-data"))
+    app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60)
+    app.query_params["mode"] = "competition_demo"
+    app.query_params["presenter"] = "1"
+    app.run()
+    app.button(key="competition_upload_cta").click().run()
+    assert not app.exception
+    assert "Personalized feedback settings" in [row.label for row in app.expander]
+    rendered = " ".join(str(element.value) for group in
+                        (app.markdown, app.caption, app.info, app.warning, app.error)
+                        for element in group)
+    assert "Local evidence-based feedback is still available." in rendered
+    assert "access_token" not in rendered and "refresh_token" not in rendered
+
+
+def test_recent_video_card_shows_source_duration_status_and_actions(tmp_path, monkeypatch):
+    app_data = tmp_path / "app-data"
+    library = app_data / "media_library"
+    item = library / "items" / "media_fixture"
+    item.mkdir(parents=True)
+    source = item / "source.mp4"
+    source.write_bytes(b"test-fixture-only")
+    registry = {
+        "schema_version": "nckh12-user-media-v1",
+        "items": [{
+            "schema_version": "nckh12-user-media-v1",
+            "media_id": "media_fixture",
+            "friendly_title": "My completed Duet",
+            "original_filename": "duet.mp4",
+            "source_type": "LOCAL_UPLOAD",
+            "source_url": None,
+            "import_timestamp": "2026-11-12T00:00:00+00:00",
+            "local_path": str(source),
+            "sha256": "a" * 64,
+            "duration_seconds": 42.0,
+            "resolution": {"width": 1080, "height": 1920},
+            "thumbnail_path": None,
+            "processing_state": "READY",
+            "assessment_state": "ASSESSED",
+            "last_result_id": "result_fixture",
+            "data_class": "UNSEEN_USER_MEDIA",
+            "research_membership": False,
+        }],
+    }
+    (library / "registry.json").write_text(json.dumps(registry), encoding="utf-8")
+    monkeypatch.setenv("NCKH12_APP_DATA", str(app_data))
+    app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60)
+    app.query_params["mode"] = "competition_demo"
+    app.run()
+    app.button(key="competition_upload_cta").click().run()
+    assert not app.exception
+    rendered = " ".join(str(element.value) for group in
+                        (app.markdown, app.caption, app.info, app.warning, app.error)
+                        for element in group)
+    assert "My completed Duet" in rendered
+    assert "Upload" in rendered and "42 sec" in rendered and "Assessed" in rendered
+    assert app.button(key="media_assess_media_fixture").label == "Assess"
+    assert app.button(key="media_result_media_fixture").label == "View result"
+    assert app.button(key="media_remove_media_fixture").label == "Remove"
+
+
 @pytest.mark.skipif(not PRIVATE_DEMO, reason="private local demo media is not distributed")
 def test_cache_hash_guard_accepts_current_inputs_and_rejects_stale_cache():
     verified = verify_frozen_scorer(ROOT)

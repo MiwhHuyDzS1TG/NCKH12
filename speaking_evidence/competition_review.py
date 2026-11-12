@@ -288,6 +288,14 @@ def load_review_feedback(root: Path, item: dict) -> tuple[dict, dict] | None:
 
 
 def selected_feedback(root: Path, item: dict) -> tuple[dict, dict]:
+    automatic = item.get("automatic_feedback")
+    provenance = item.get("automatic_feedback_provenance")
+    if (isinstance(automatic, dict)
+            and automatic.get("engine") == "CHATGPT_AUTOMATIC_TEXT_REVIEW_V1"
+            and isinstance(provenance, dict)
+            and provenance.get("numeric_scores_replaced") is False
+            and provenance.get("audio_or_video_sent") is False):
+        return automatic, provenance
     reviewed = load_review_feedback(root, item)
     if reviewed is not None:
         return reviewed

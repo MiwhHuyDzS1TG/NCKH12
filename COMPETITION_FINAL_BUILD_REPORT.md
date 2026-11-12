@@ -123,3 +123,15 @@ The freeze truthfully records that all three manual GPT reviews are pending. Det
 - Python compilation and Streamlit AppTest passed.
 - Playwright visual QA passed at **1366x768** and **1920x1080** with no horizontal overflow, clipped score cards or clipped feedback cards.
 - The only test warning is a non-blocking package-resource deprecation warning from the third-party Silero VAD package.
+
+# Product V2 Extension (2026-11-12)
+
+Product V2 extends the frozen competition shell without reopening scorer research. The local numeric result is still produced only by `COMPETITION_FREEZE_V1`; P2.5 was not used for refit, fixed holdout media/outcomes were not opened, machine Intelligibility remains absent, and no Overall was created.
+
+The presenter-only settings now support the official Sign in with ChatGPT public OAuth flow with PKCE, state, nonce, verified loopback identity, Windows-protected local credentials, plan-usage permission validation, account-specific model discovery, and public streamed Responses API calls. Remote feedback is text evidence only, strict-schema validated, hash-cached, and unable to overwrite a numeric score. Local deterministic evidence-based feedback remains the operational fallback. Real account and feedback smoke tests remain `PENDING_USER_AUTHORIZATION`; automated tests use mocked external traffic and consume no plan usage. Full details are in `CHATGPT_AUTOMATIC_FEEDBACK_REPORT.md`.
+
+The Assessment workspace now supports safe direct upload, official TikTok oEmbed preview, permission-gated pinned yt-dlp import, and a persistent private Recent Videos library with thumbnails, status, Assess, View result, and protected Remove. Every added item is `UNSEEN_USER_MEDIA` and excluded from all research membership. A real TikTok import remains `PENDING_USER_TEST_URL`; upload is the reliable fallback. Full details are in `MEDIA_IMPORT_LIBRARY_REPORT.md`.
+
+Student-facing wording emphasizes `Personalized feedback` and `Evidence-based assessment`. ChatGPT is named only where the user manages the optional connection. The UI does not imply that remote feedback creates official scores. Browser QA covers Home, Assessment, the empty library, and Results at 1366x768 and 1920x1080 with no horizontal overflow or clipped core content.
+
+Product V2 final verification: ChatGPT tests **16 passed**; media tests **17 passed**; competition UI/pipeline tests **19 passed**; full normal suite **168 passed, 2 skipped**; Python compilation passed; Streamlit AppTest passed; real local media I/O smoke passed; and Playwright QA passed at both target resolutions, including the discreet presenter connection panel. The sole warning remains the non-blocking Silero VAD package-resource deprecation notice.

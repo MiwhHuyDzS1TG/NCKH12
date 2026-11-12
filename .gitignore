@@ -17,6 +17,12 @@ env/
 !.env.example
 *.pem
 *.key
+*.token
+chatgpt-host.json
+profile.dat
+.nckh12-user-data/
+competition_user_media/
+feedback_cache/
 
 # Private research media and human data
 data/

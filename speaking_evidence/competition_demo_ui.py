@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import base64
-import hashlib
 import html
+import json
 import time
 from pathlib import Path
 
@@ -25,6 +25,20 @@ from speaking_evidence.competition_review import (
     export_review_bundle,
     import_review,
     selected_feedback,
+)
+from speaking_evidence.chatgpt_auth import (
+    ChatGPTAuthManager,
+    ChatGPTConnectionError,
+    MANAGE_USAGE_URL,
+)
+from speaking_evidence.chatgpt_feedback import (
+    attach_automatic_feedback,
+    load_cached_feedback,
+)
+from speaking_evidence.media_library import (
+    MediaLibrary,
+    MediaLibraryError,
+    fetch_tiktok_oembed,
 )
 
 
@@ -133,6 +147,24 @@ div[role="radiogroup"] label:hover {border-color:var(--demo-accent); transform:t
 .demo-failure {background:var(--demo-card); border:1px solid #efcfca; border-radius:var(--demo-radius); padding:2rem; box-shadow:var(--demo-shadow);}
 .demo-failure h2 {margin:0 0 .5rem;}
 .demo-footer {margin-top:2rem; padding-top:1rem; border-top:1px solid var(--demo-line); font-size:.76rem; color:var(--demo-muted);}
+.st-key-competition_media_workspace {background:var(--demo-card); border:1px solid var(--demo-line); border-radius:var(--demo-radius); padding:1.35rem; box-shadow:var(--demo-shadow); margin:.8rem 0 1.4rem;}
+.media-workspace-title {font-size:1.35rem; font-weight:760; color:var(--demo-text); letter-spacing:-.025em; margin-bottom:.3rem;}
+.media-workspace-copy {font-size:.88rem; color:var(--demo-muted); margin-bottom:1rem;}
+.media-empty {border:1px dashed #a9b7cc; border-radius:var(--demo-radius); padding:2.2rem 1.2rem; text-align:center; background:#f8faff; margin:.7rem 0;}
+.media-empty b {display:block; color:var(--demo-text); font-size:1.08rem; margin-bottom:.3rem;}
+.media-empty span {color:var(--demo-muted); font-size:.86rem;}
+.media-card-title {font-weight:760; color:var(--demo-text); font-size:.94rem; line-height:1.3; min-height:2.45rem;}
+.media-card-meta {font-size:.74rem; color:var(--demo-muted); margin:.3rem 0 .7rem;}
+.media-source {display:inline-block; padding:.22rem .44rem; border-radius:999px; color:var(--demo-accent); background:var(--demo-accent-soft); font-size:.66rem; font-weight:800; margin-right:.3rem;}
+.media-status {font-size:.72rem; font-weight:750; color:var(--demo-success);}
+.chatgpt-state {padding:.85rem 1rem; border:1px solid var(--demo-line); border-radius:12px; background:#f8faff; margin:.5rem 0 .8rem;}
+.chatgpt-state b {display:block; color:var(--demo-text); margin-bottom:.2rem;}
+.chatgpt-state span {font-size:.8rem; color:var(--demo-muted);}
+[data-testid="stTextInput"] input {border-radius:12px; border-color:#a9b7cc; background:#ffffff; color:var(--demo-text);}
+[data-testid="stTextInput"] input:focus {border-color:var(--demo-accent); box-shadow:0 0 0 2px rgba(37,87,201,.14);}
+[data-testid="stTabs"] [role="tablist"] {gap:.5rem;}
+[data-testid="stTabs"] button[role="tab"] {border-radius:12px; padding:.65rem 1rem; color:var(--demo-muted);}
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {background:var(--demo-accent-soft); color:var(--demo-accent);}
 details {border-radius:var(--demo-radius) !important; border-color:var(--demo-line) !important; background:var(--demo-card) !important;}
 @media (max-width: 980px) {
   .block-container {padding:1rem 1.2rem 3rem;}
@@ -185,7 +217,7 @@ def _landing(root: Path) -> None:
                 st.session_state["competition_input_mode"] = "Try a Demo"
                 _go("assessment")
             if secondary.button("Assess a Duet", width="stretch", key="competition_upload_cta"):
-                st.session_state["competition_input_mode"] = "Assess a Duet"
+                st.session_state["competition_input_mode"] = "Assess your video"
                 _go("assessment")
         with right:
             image_bytes = (root / "assets/competition-hero-v1.webp").read_bytes()
@@ -239,42 +271,271 @@ def _fast_demo(root: Path) -> None:
             st.session_state["competition_internal_error"] = str(exc)
 
 
-def _live_demo(root: Path) -> None:
-    readiness = offline_readiness(root)
-    upload = st.file_uploader(
-        "Completed TikTok Duet video",
-        type=["mp4", "mov", "mkv"],
-        help="The file stays on this computer and is processed by local models.",
-        key="competition_upload",
-    )
-    if not readiness["ready"]:
-        st.warning("Live analysis is unavailable because a required local model asset is missing. Fast Demo remains available.")
+def _chatgpt_settings() -> None:
+    """Presenter-only controls. Tokens never enter Streamlit state."""
+    if str(st.query_params.get("presenter", "0")) != "1":
         return
-    if st.button("Run live analysis", type="primary", width="stretch",
-                 disabled=upload is None, key="competition_live_run"):
-        suffix = Path(upload.name).suffix.lower()
-        payload = upload.getvalue()
-        run_id = hashlib.sha256(payload).hexdigest()[:12]
-        work_dir = root / "runs/competition_demo" / run_id
-        source = work_dir / f"completed_duet{suffix}"
-        work_dir.mkdir(parents=True, exist_ok=True)
-        source.write_bytes(payload)
+    manager = ChatGPTAuthManager()
+    with st.expander("Personalized feedback settings", expanded=False):
         try:
-            with st.status("Running local analysis", expanded=True) as status:
-                placeholder = st.empty()
+            connection = manager.status()
+        except ChatGPTConnectionError as exc:
+            st.error(exc.public_message)
+            connection = {"connected": False, "plan_usage_enabled": False}
+        if not connection["connected"]:
+            st.markdown(
+                "<div class='chatgpt-state'><b>Personalized AI feedback is not connected</b>"
+                "<span>Local evidence-based feedback is still available.</span></div>",
+                unsafe_allow_html=True,
+            )
+            st.caption(
+                "Click Continue with ChatGPT, approve access in the browser, then return here. "
+                "NCKH12 verifies the local callback, checks permission, and loads the models "
+                "available to your account."
+            )
+            if st.button("Continue with ChatGPT", type="primary", key="chatgpt_connect"):
+                try:
+                    with st.status("Waiting for ChatGPT sign-in", expanded=True):
+                        manager.sign_in()
+                    st.success("Personalized AI feedback enabled.")
+                    st.rerun()
+                except ChatGPTConnectionError as exc:
+                    st.error(exc.public_message)
+                    st.session_state["competition_chatgpt_error_code"] = exc.code
+        else:
+            state = "Personalized AI feedback enabled" if connection["plan_usage_enabled"] else "Connected without plan usage"
+            st.markdown(
+                f"<div class='chatgpt-state'><b>{html.escape(state)}</b>"
+                "<span>If unavailable, NCKH12 automatically uses local evidence-based feedback.</span></div>",
+                unsafe_allow_html=True,
+            )
+            models = connection.get("models", [])
+            if models:
+                slugs = [row["slug"] for row in models]
+                current = connection.get("selected_model")
+                selected = st.selectbox(
+                    "Feedback model", slugs,
+                    index=slugs.index(current) if current in slugs else 0,
+                    format_func=lambda slug: next(
+                        row["display_name"] for row in models if row["slug"] == slug),
+                    key="chatgpt_feedback_model",
+                )
+                if selected != current:
+                    try:
+                        manager.select_model(selected)
+                    except ChatGPTConnectionError as exc:
+                        st.error(exc.public_message)
+            actions = st.columns(3)
+            if actions[0].button("Refresh models", key="chatgpt_refresh_models"):
+                try:
+                    manager.discover_models()
+                    st.rerun()
+                except ChatGPTConnectionError as exc:
+                    st.error(exc.public_message)
+            actions[1].link_button("Manage usage", MANAGE_USAGE_URL, width="stretch")
+            if actions[2].button("Disconnect", key="chatgpt_disconnect", width="stretch"):
+                manager.disconnect()
+                st.success("ChatGPT disconnected from this computer.")
+                st.rerun()
+        st.caption("Only transcript and measured speaking evidence are sent. Audio and video stay local.")
 
-                def update(message: str) -> None:
-                    placeholder.write(message)
 
-                result = run_live_analysis(root, source, work_dir, update)
-                status.update(label="Analysis finished", state="complete", expanded=False)
-            st.session_state["competition_result"] = result
-            st.session_state["competition_view"] = "results"
+def _assess_media(root: Path, library: MediaLibrary, record: dict) -> None:
+    readiness = offline_readiness(root)
+    if not readiness["ready"]:
+        st.error("Local analysis is unavailable because a required model asset is missing. Fast Demo remains available.")
+        return
+    source = Path(record["local_path"])
+    try:
+        with st.status("Analyzing your speaking", expanded=True) as status:
+            stage = st.empty()
+            completed_stages: list[str] = []
+
+            def update(message: str) -> None:
+                if message not in completed_stages:
+                    completed_stages.append(message)
+                stage.markdown("  \n".join(f"✓ {row}" for row in completed_stages))
+
+            result = run_live_analysis(root, source, library.analysis_dir(record["media_id"]), update)
+            result["media_id"] = record["media_id"]
+            result["display_name"] = record["friendly_title"]
+            result["data_class"] = "UNSEEN_USER_MEDIA"
+            if result.get("status") != "NOT_SCORABLE":
+                connection = ChatGPTAuthManager().status()
+                if connection.get("connected") and connection.get("plan_usage_enabled"):
+                    stage.markdown("  \n".join(
+                        [*(f"✓ {row}" for row in completed_stages),
+                         "Preparing personalized feedback..."]
+                    ))
+                    result, feedback_error = attach_automatic_feedback(result)
+                    if feedback_error:
+                        result["feedback_notice"] = (
+                            "Personalized feedback was unavailable. Local evidence-based feedback is shown instead."
+                        )
+                        result["automatic_feedback_error_code"] = feedback_error
+                    completed_stages.append("Personalized feedback prepared")
+                    stage.markdown("  \n".join(f"✓ {row}" for row in completed_stages))
+            result_id = f"result_{record['sha256'][:16]}"
+            library.mark_assessed(
+                record["media_id"], result_id,
+                "UNABLE_TO_ASSESS" if result.get("status") == "NOT_SCORABLE" else "ASSESSED",
+            )
+            if "Assessment completed" not in completed_stages:
+                completed_stages.append("Assessment completed")
+                stage.markdown("  \n".join(f"✓ {row}" for row in completed_stages))
+            status.update(label="Assessment completed", state="complete", expanded=False)
+        st.session_state["competition_result"] = result
+        st.session_state["competition_view"] = "results"
+        st.rerun()
+    except (OSError, RuntimeError, ValueError, KeyError, MediaLibraryError,
+            ChatGPTConnectionError) as exc:
+        st.error("We could not complete a trustworthy assessment for this video.")
+        st.caption("Try another completed Duet. Your saved video remains in Recent videos.")
+        st.session_state["competition_internal_error"] = type(exc).__name__
+
+
+def _load_saved_result(library: MediaLibrary, record: dict) -> dict:
+    path = library.analysis_dir(record["media_id"]) / "result.json"
+    if not path.is_file():
+        raise MediaLibraryError("result_missing", "The saved result is unavailable. Assess this video again.")
+    result = json.loads(path.read_text(encoding="utf-8"))
+    result["media_id"] = record["media_id"]
+    result["display_name"] = record["friendly_title"]
+    result["data_class"] = "UNSEEN_USER_MEDIA"
+    try:
+        connection = ChatGPTAuthManager().status()
+        model = connection.get("selected_model")
+        if connection.get("plan_usage_enabled") and isinstance(model, str):
+            cached = load_cached_feedback(result, model)
+            if cached:
+                result["automatic_feedback"], result["automatic_feedback_provenance"] = cached
+    except (ChatGPTConnectionError, ValueError):
+        pass
+    return result
+
+
+def _tiktok_panel(library: MediaLibrary) -> None:
+    st.markdown("<div class='media-workspace-title'>Paste a TikTok link</div>", unsafe_allow_html=True)
+    st.markdown("<div class='media-workspace-copy'>Preview a public TikTok video, then import it only with permission.</div>", unsafe_allow_html=True)
+    url = st.text_input("TikTok video URL", placeholder="https://www.tiktok.com/@creator/video/...",
+                        key="competition_tiktok_url")
+    if st.button("Preview link", disabled=not url, key="competition_tiktok_preview"):
+        try:
+            with st.status("Loading official TikTok preview", expanded=False):
+                st.session_state["competition_tiktok_preview_data"] = fetch_tiktok_oembed(url)
+        except MediaLibraryError as exc:
+            st.session_state.pop("competition_tiktok_preview_data", None)
+            st.error(exc.public_message)
+    preview = st.session_state.get("competition_tiktok_preview_data")
+    if preview:
+        st.markdown(f"**{html.escape(preview['title'])}**")
+        if preview.get("author_name"):
+            st.caption(f"TikTok creator: {preview['author_name']}")
+        components.html(preview["html"], height=610, scrolling=True)
+        confirmed = st.checkbox(
+            "I own this video or have permission to use it for this assessment.",
+            value=False, key="competition_tiktok_permission",
+        )
+        if st.button("Import video", type="primary", disabled=not confirmed,
+                     key="competition_tiktok_import"):
+            try:
+                with st.status("Importing your video", expanded=True):
+                    record, created = library.import_tiktok(
+                        preview["resolved_url"], confirmed, title=preview["title"])
+                st.success("Video added to Recent videos." if created else "This video is already in Recent videos.")
+                st.session_state["competition_selected_media"] = record["media_id"]
+                st.rerun()
+            except MediaLibraryError as exc:
+                st.error(exc.public_message)
+
+
+def _upload_panel(library: MediaLibrary) -> None:
+    st.markdown("<div class='media-workspace-title'>Upload a completed Duet</div>", unsafe_allow_html=True)
+    st.markdown("<div class='media-workspace-copy'>The video stays on this computer until you remove it.</div>", unsafe_allow_html=True)
+    upload = st.file_uploader(
+        "Choose video", type=["mp4", "mov", "mkv", "webm"],
+        help="MP4, MOV, MKV or WebM. Maximum 500 MB and five minutes.",
+        key="competition_media_upload",
+    )
+    if st.button("Add to Recent videos", type="primary", disabled=upload is None,
+                 key="competition_register_upload"):
+        try:
+            record, created = library.register_upload(upload.name, upload.getvalue())
+            st.success("Video added to Recent videos." if created else "This video is already in Recent videos.")
+            st.session_state["competition_selected_media"] = record["media_id"]
             st.rerun()
-        except (OSError, RuntimeError, ValueError, KeyError) as exc:
-            st.error("We could not complete a trustworthy assessment for this file.")
-            st.caption("Please try another completed Duet. Technical details remain hidden during presentation.")
-            st.session_state["competition_internal_error"] = str(exc)
+        except MediaLibraryError as exc:
+            st.error(exc.public_message)
+
+
+def _recent_media(root: Path, library: MediaLibrary) -> None:
+    st.markdown("<div class='demo-section-head'>Recent videos</div>", unsafe_allow_html=True)
+    records = library.list_recent()
+    if not records:
+        st.markdown(
+            "<div class='media-empty'><b>No recent videos yet</b>"
+            "<span>Paste a TikTok link or upload a completed Duet to begin.</span></div>",
+            unsafe_allow_html=True,
+        )
+        return
+    for start in range(0, len(records), 3):
+        columns = st.columns(3, gap="medium")
+        for column, record in zip(columns, records[start:start + 3]):
+            with column:
+                with st.container(border=True):
+                    thumbnail = record.get("thumbnail_path")
+                    if thumbnail and Path(thumbnail).is_file():
+                        st.image(thumbnail, width="stretch")
+                    st.markdown(
+                        f"<div class='media-card-title'>{html.escape(record['friendly_title'])}</div>"
+                        f"<div class='media-card-meta'><span class='media-source'>"
+                        f"{'TikTok' if record['source_type'] == 'TIKTOK_LINK' else 'Upload'}</span>"
+                        f"{record['duration_seconds']:.0f} sec</div>"
+                        f"<div class='media-status'>{record['assessment_state'].replace('_', ' ').title()}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    actions = st.columns(2)
+                    if actions[0].button("Assess", type="primary", width="stretch",
+                                         key=f"media_assess_{record['media_id']}"):
+                        _assess_media(root, library, record)
+                    if (record.get("last_result_id")
+                            and actions[1].button("View result", width="stretch",
+                                                  key=f"media_result_{record['media_id']}")):
+                        try:
+                            st.session_state["competition_result"] = _load_saved_result(library, record)
+                            st.session_state["competition_view"] = "results"
+                            st.rerun()
+                        except MediaLibraryError as exc:
+                            st.error(exc.public_message)
+                    if st.session_state.get("competition_remove_confirm") == record["media_id"]:
+                        st.warning("Remove this video and its local competition result?")
+                        confirm, cancel = st.columns(2)
+                        if confirm.button("Confirm remove", width="stretch",
+                                          key=f"media_remove_yes_{record['media_id']}"):
+                            try:
+                                library.remove(record["media_id"])
+                                st.session_state.pop("competition_remove_confirm", None)
+                                st.rerun()
+                            except MediaLibraryError as exc:
+                                st.error(exc.public_message)
+                        if cancel.button("Cancel", width="stretch",
+                                         key=f"media_remove_no_{record['media_id']}"):
+                            st.session_state.pop("competition_remove_confirm", None)
+                            st.rerun()
+                    elif st.button("Remove", width="stretch", key=f"media_remove_{record['media_id']}"):
+                        st.session_state["competition_remove_confirm"] = record["media_id"]
+                        st.rerun()
+
+
+def _media_workspace(root: Path) -> None:
+    library = MediaLibrary()
+    with st.container(key="competition_media_workspace"):
+        link_tab, upload_tab = st.tabs(["Paste TikTok link", "Upload video"])
+        with link_tab:
+            _tiktok_panel(library)
+        with upload_tab:
+            _upload_panel(library)
+    _recent_media(root, library)
 
 
 def _assessment(root: Path) -> None:
@@ -282,20 +543,18 @@ def _assessment(root: Path) -> None:
     top = st.columns([.2, .8])
     if top[0].button("Home", key="competition_home_from_assessment", width="stretch"):
         _go("home")
-    st.markdown("<div class='demo-section-head'>Choose how to assess</div>", unsafe_allow_html=True)
-    st.markdown("<p class='demo-section-copy'>Use a prepared demonstration for a fast presentation, or run the full local pipeline on a new completed Duet.</p>", unsafe_allow_html=True)
+    st.markdown("<div class='demo-section-head'>Assessment workspace</div>", unsafe_allow_html=True)
+    st.markdown("<p class='demo-section-copy'>Choose a prepared demo, import a permitted TikTok, or upload a completed Duet.</p>", unsafe_allow_html=True)
     st.session_state.setdefault("competition_input_mode", "Try a Demo")
     choice = st.radio(
-        "Assessment path",
-        ["Try a Demo", "Assess a Duet"],
-        horizontal=True,
-        key="competition_input_mode",
-        label_visibility="collapsed",
+        "Assessment path", ["Try a Demo", "Assess your video"], horizontal=True,
+        key="competition_input_mode", label_visibility="collapsed",
     )
+    _chatgpt_settings()
     if choice == "Try a Demo":
         _fast_demo(root)
     else:
-        _live_demo(root)
+        _media_workspace(root)
 
 
 def _score_card(name: str, value: float | None, subtitle: str, status: str,
@@ -420,6 +679,13 @@ def _evidence_explorer(result: dict, root: Path) -> None:
                 st.video(str(video))
             except (OSError, ValueError):
                 st.info("The source video is unavailable, but the verified machine evidence remains unchanged.")
+        elif result.get("media_id"):
+            try:
+                record = MediaLibrary().get(result["media_id"])
+                st.markdown("### Completed Duet")
+                st.video(record["local_path"])
+            except (MediaLibraryError, OSError):
+                st.info("The local video is unavailable, but its saved assessment remains unchanged.")
 
 
 def _technical_details(result: dict, feedback_provenance: dict) -> None:
@@ -439,6 +705,10 @@ def _technical_details(result: dict, feedback_provenance: dict) -> None:
         ])
         st.write(f"ASR backend: {result.get('evidence', {}).get('asr_model', 'Unavailable')}")
         st.write(f"Feedback source: {feedback_provenance.get('feedback_source', 'Unavailable')}")
+        if feedback_provenance.get("model_slug"):
+            st.write(f"Feedback model: {feedback_provenance['model_slug']}")
+        if result.get("automatic_feedback_error_code"):
+            st.write(f"Automatic feedback status: {result['automatic_feedback_error_code']}")
         st.write(f"Target profile: {result.get('target_profile_sha256', 'Unavailable')}")
         st.caption("Numeric speaking scores come only from the frozen local scorer. Imported review can change wording, never scores.")
 
@@ -447,6 +717,7 @@ def _presenter_tools(root: Path, result: dict, feedback_provenance: dict) -> Non
     if str(st.query_params.get("presenter", "0")) != "1":
         return
     _technical_details(result, feedback_provenance)
+    _chatgpt_settings()
     with st.expander("Presenter tools", expanded=False):
         st.write("Cache and feedback provenance are visible only in presenter mode.")
         if result.get("source_mode") == "FAST_DEMO_FROZEN_CACHE":
@@ -513,11 +784,11 @@ def _results(root: Path, result: dict) -> None:
         "<div class='demo-process-item'><span>✓</span>Video received</div>"
         "<div class='demo-process-item'><span>✓</span>Learner speech identified</div>"
         "<div class='demo-process-item'><span>✓</span>Audio quality verified</div>"
-        "<div class='demo-process-item'><span>✓</span>AI analysis completed</div>"
+        "<div class='demo-process-item'><span>✓</span>Assessment completed</div>"
         "</div>", unsafe_allow_html=True)
     st.markdown(
         f"<div class='demo-result-head'><div><div class='demo-result-title'>{html.escape(result['display_name'])}</div>"
-        f"<p>Assessment completed</p></div><div class='demo-status'>AI-assisted assessment</div></div>",
+        f"<p>Assessment completed</p></div><div class='demo-status'>Evidence-based assessment</div></div>",
         unsafe_allow_html=True)
     scores = result.get("scores", {})
     statuses = result.get("criterion_status", {})
@@ -532,6 +803,8 @@ def _results(root: Path, result: dict) -> None:
     for failure in result.get("model_failures", []):
         st.info(failure["public_message"])
     feedback_provenance = _feedback(root, result)
+    if result.get("feedback_notice"):
+        st.info(result["feedback_notice"])
     _evidence_explorer(result, root)
     _presenter_tools(root, result, feedback_provenance)
     _judge_panels()

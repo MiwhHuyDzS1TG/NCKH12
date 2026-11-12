@@ -541,12 +541,12 @@ def run_live_analysis(root: Path, duet_path: Path, work_dir: Path,
         raise RuntimeError("Required offline scoring assets are unavailable")
     notify = progress or (lambda _message: None)
     work_dir.mkdir(parents=True, exist_ok=True)
+    duet_sha256 = sha256_file(duet_path)
     notify("Video received")
     profile = build_template_profile(
         root / "data/templates/T001/original.mp4",
         root / ".local/competition_demo/template_profile",
         "T001", load_config(), force=False)
-    notify("Identifying learner speech")
     phase1 = run_profiled(profile, duet_path, work_dir / "phase1", load_config(), "T001-LIVE")
     if (phase1.get("status") != "ok"
             or phase1.get("scorability_status") != "SCORABLE_CLEAN"
@@ -556,6 +556,7 @@ def run_live_analysis(root: Path, duet_path: Path, work_dir: Path,
             "pair_id": "T001-LIVE",
             "display_name": "Uploaded Duet",
             "source_mode": "LIVE_ANALYSIS",
+            "raw_duet_sha256": duet_sha256,
             "status": "NOT_SCORABLE",
             "reason_codes": phase1.get("quality_gate_reasons", []) + phase1.get("scorability_reasons", []),
             "scores": {},
@@ -564,7 +565,7 @@ def run_live_analysis(root: Path, duet_path: Path, work_dir: Path,
             "holdout": False,
             "holdout_processed": False,
         }
-    notify("Verifying audio quality")
+    notify("Learner speech identified")
     intervals = phase1["learner_segments"]
     turn = {
         "turn_id": "T001",
@@ -574,15 +575,17 @@ def run_live_analysis(root: Path, duet_path: Path, work_dir: Path,
     }
     audio_path = work_dir / "raw_learner_audio.wav"
     prepare_turn_audio(duet_path, turn, audio_path)
+    notify("Audio quality verified")
     asr_config = yaml.safe_load((root / "p2_config.yaml").read_text(encoding="utf-8"))["asr"]
     asr = FasterWhisperBackend(**asr_config)
-    notify("Transcribing measured learner speech")
     transcript = asr.transcribe(audio_path, turn["start_sec"], turn["end_sec"], turn["learner_intervals"])
     fluency_evidence = measure_fluency(turn, transcript["words"])
     target = load_competition_target(root)
     frozen_multipa_target = _load(root / "task_profiles/T001_target_text_v1.json")["confirmed_text"]
     completeness = align_completeness(
         target["scored_passage"], transcript["verbatim_transcript"], "ASR_A_SMALL_EN_LIVE")
+    notify("Fluency measured")
+    notify("Reading coverage checked")
     plan = _load(root / "p25_frozen_mini_validation_plan_v1.json")
     scores: dict[str, float] = {
         "fluency": apply_mapping(plan["criteria"]["fluency"]["mapping"], fluency_evidence),
@@ -604,7 +607,6 @@ def run_live_analysis(root: Path, duet_path: Path, work_dir: Path,
             write_wav_slice(audio_path, chunk_path, local_start, local_end)
             chunk["wav_path"] = str(chunk_path.resolve())
             chunk["wav_sha256"] = sha256_file(chunk_path)
-        notify("Running frozen AI speaking analysis")
         request = {
             "mode": "PRETRAINED_INFERENCE_ONLY",
             "plan_sha256": frozen["p25_plan_sha256"],
@@ -624,13 +626,14 @@ def run_live_analysis(root: Path, duet_path: Path, work_dir: Path,
         scores["prosody"] = apply_fitted_mapping(
             plan["criteria"]["prosody"]["mapping"],
             "multipa_prosody", raw_multipa["prosody"])
+        notify("Pronunciation analyzed")
+        notify("Prosody analyzed")
     except (OSError, RuntimeError, ValueError, KeyError, subprocess.SubprocessError) as exc:
         model_failures.append({
             "criteria": ["pronunciation", "prosody"],
             "public_message": "Pronunciation and prosody assessment are unavailable for this recording.",
             "internal_reason": str(exc),
         })
-    notify("Preparing evidence-based feedback")
     item = {
         "version": CACHE_VERSION,
         "pair_id": "T001-LIVE",
@@ -642,6 +645,7 @@ def run_live_analysis(root: Path, duet_path: Path, work_dir: Path,
         "fake_or_placeholder_score": False,
         "canonical_source": "RAW_COMPLETED_DUET",
         "audio_source_type": "RAW_CROPPED",
+        "raw_duet_sha256": duet_sha256,
         "target_profile_sha256": TARGET_PROFILE_SHA256,
         "target_topic": target["topic"],
         "quality_gate": phase1["quality_gate"],
@@ -682,4 +686,5 @@ def run_live_analysis(root: Path, duet_path: Path, work_dir: Path,
     item["feedback"] = deterministic_feedback(item)
     validate_deterministic_feedback(item)
     _write(work_dir / "result.json", item)
+    notify("Evidence-based feedback prepared")
     return item
