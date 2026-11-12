@@ -1,0 +1,79 @@
+{
+  "product_build": "COMPETITION_PRODUCT_V3_REACT",
+  "created_date": "2026-11-12",
+  "status": "READY_FOR_USER_SMOKE_TEST",
+  "parent_product_v2_commit": "f88f150819987bba322e485a95279a0c070c8b27",
+  "base_freeze": {
+    "version": "COMPETITION_FREEZE_V1",
+    "freeze_file_sha256": "0b73719689c9805de741fedb233ef60eb039a8fc220c0e629ea9640b2f47f50d",
+    "frozen_scorer_sha256": "90755aaa169b605c7b9a070ae411dc28366a2b3e568e4daf2e81dc15a4cee1c1",
+    "target_profile_sha256": "e2a4b2f1ee77860bab9a1a075d07bf61a27fe9ab641a71719dc129def1fb9da2",
+    "scorer_changed": false,
+    "p25_used_for_refit": false,
+    "holdout_processed": false,
+    "machine_intelligibility": null
+  },
+  "architecture": {
+    "api_schema_version": "nckh12-product-api-v1",
+    "api_adapter_sha256": "a5655b0f0fe850dd83b86e337070b6ed907371c3f9c4f863a973fd0354ef7b41",
+    "react": "19.3.1",
+    "typescript": "5.9.3",
+    "vite": "7.3.8",
+    "design_system_version": "duet-speak-studio-v1",
+    "overall_formula_version": "nckh12-product-overall-practice-v1"
+  },
+  "overall_practice_score": {
+    "status": "DESCRIPTIVE_PRODUCT_COMPOSITE",
+    "presenter_designation": "UNVALIDATED_PRODUCT_COMPOSITE",
+    "backend_owned": true,
+    "equal_weighted": true,
+    "machine_intelligibility_included": false,
+    "research_artifact": false
+  },
+  "production_build": {
+    "index_sha256": "522b0193b36327590139219fb01c912ac1f3c13afa64a4ddb315a292fac3fa6b",
+    "javascript": "assets/index-c6rOrtUw.js",
+    "javascript_sha256": "e11edaee2501a393564eb698ef05058d73f6a094a9690078fa12d5f58a9f79b4",
+    "css": "assets/index-6ab0WzQI.css",
+    "css_sha256": "a30d762afc6b53eb517cddb7c598e44520d4397de99a74c8fd85981c547ed9cc",
+    "normal_launch_requires_node": false
+  },
+  "design_asset": {
+    "path": "product_frontend/public/assets/duet-speak-audio-sculpture.webp",
+    "sha256": "92dd11f807cfe4aaeb326b13089ce0864a674e40554ca4487dbc62aa2ac5a9d4",
+    "semantic_role": "DECORATIVE_ONLY"
+  },
+  "screenshots": [
+    "ui_evidence/after/home-1920.png",
+    "ui_evidence/after/home-1366.png",
+    "ui_evidence/after/home-mobile.png",
+    "ui_evidence/after/assessment-1366.png",
+    "ui_evidence/after/assessment-mobile.png",
+    "ui_evidence/after/recent-1440.png",
+    "ui_evidence/after/processing-genuine-1366.png",
+    "ui_evidence/after/results-d043-1920.png",
+    "ui_evidence/after/results-d043-1366.png",
+    "ui_evidence/after/results-d043-mobile.png",
+    "ui_evidence/after/results-d064-1440.png",
+    "ui_evidence/after/results-d048-1440.png",
+    "ui_evidence/after/evidence-expanded-1366.png",
+    "ui_evidence/after/presenter-chatgpt-1366.png"
+  ],
+  "verification": {
+    "status": "PASS",
+    "frontend_unit": "2 passed",
+    "frontend_typecheck": "PASS",
+    "frontend_lint": "PASS",
+    "frontend_production_build": "PASS - 537 modules",
+    "targeted_python": "71 passed",
+    "full_python": "187 passed, 2 skipped, 1 third-party deprecation warning",
+    "streamlit_apptest_targeted": "46 passed",
+    "python_compilation": "PASS",
+    "browser_visual_and_interaction_qa": "PASS",
+    "real_numpy_assessment_path": "PASS",
+    "react_launcher": "PASS",
+    "legacy_launcher": "PASS",
+    "teacher_launcher": "PASS"
+  },
+  "release_commit": "RECORDED_BY_GIT_COMMIT_CONTAINING_THIS_MARKER"
+}

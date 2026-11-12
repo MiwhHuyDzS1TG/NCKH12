@@ -428,11 +428,15 @@ def test_offline_demo_assets_are_available_without_remote_services():
     assert readiness["remote_services_required"] == []
 
 
-def test_launcher_opens_dedicated_competition_mode_without_changing_teacher_launcher():
+def test_launcher_opens_new_product_and_preserves_legacy_and_teacher_launchers():
     batch = (ROOT / "START_COMPETITION_DEMO.bat").read_text(encoding="utf-8")
-    launcher = (ROOT / "scripts/start_competition_demo.ps1").read_text(encoding="utf-8")
+    product = (ROOT / "scripts/start_product_studio.ps1").read_text(encoding="utf-8")
+    legacy_batch = (ROOT / "START_COMPETITION_DEMO_LEGACY.bat").read_text(encoding="utf-8")
+    legacy = (ROOT / "scripts/start_competition_demo.ps1").read_text(encoding="utf-8")
     teacher = (ROOT / "scripts/start_teacher_rating.ps1").read_text(encoding="utf-8")
-    assert "start_competition_demo.ps1" in batch
-    assert "?mode=competition_demo" in launcher
+    assert "start_product_studio.ps1" in batch
+    assert "127.0.0.1:8765" in product
+    assert "start_competition_demo.ps1" in legacy_batch
+    assert "?mode=competition_demo" in legacy
     assert "?mode=teacher" in teacher
     assert "competition_demo" not in teacher

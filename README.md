@@ -2,7 +2,7 @@
 
 Local research proof of concept for Grade 10 EFL controlled-reading practice. The system aligns a known TikTok template with a completed Duet, locates learner speech, extracts evidence from the original Duet audio, and prepares development-only speaking assessment calibration.
 
-> **Current status (2026-10-31): functional research prototype, 54/100 competition-ready.** Phase 1 extraction and Phase 2 evidence generation work. The target text, six human ASR references, measured ASR selection, four-criterion teacher workflow, strict post-rating preflight, and waiting/result states are ready. The 12-video human speaking-rating queue is still empty, so calibrated scores and learner feedback do not yet exist.
+> **Current status (2026-11-12): competition product and research console available.** The frozen speaking pipeline now has a premium local React competition surface, genuine development demos, upload/library assessment, evidence-grounded feedback and a descriptive product-only Overall Practice Score. Research and teacher workflows remain in Streamlit. Scientific limitations and frozen boundaries remain in force.
 
 This project does **not** claim CEFR, B2, or IELTS validity. Current outputs are development research evidence, not official proficiency results.
 
@@ -65,6 +65,16 @@ python -m pip install -e ".[console,evidence,test]"
 The ASR models are downloaded by faster-whisper when first used. Keep model caches outside Git.
 
 ## Run
+
+For the competition product, double-click:
+
+```text
+START_COMPETITION_DEMO.bat
+```
+
+It opens the packaged React product at `http://127.0.0.1:8765/`. No Vite server or npm command is required. Use `START_COMPETITION_DEMO_LEGACY.bat` for the preserved Streamlit competition interface.
+
+For research work:
 
 ```powershell
 streamlit run app.py

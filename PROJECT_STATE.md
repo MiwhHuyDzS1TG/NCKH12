@@ -1569,3 +1569,25 @@ The original user-media result completed the repaired cache/request path with a 
 
 Verification: ChatGPT feedback **20 passed**; media/Product V2 **18 passed**; competition **20 passed**; full suite **174 passed, 2 skipped**; Python compilation and Streamlit AppTest passed. The only suite warning remains the existing third-party Silero VAD deprecation notice. Frozen scorer, target, calibration, MultiPA, Fluency, Prosody, Completeness, split, and research artifacts are unchanged; holdout was not opened or processed.
 
+# COMPETITION PRODUCT V3 REACT - DUET / SPEAK UI TRANSFORMATION (2026-11-12)
+
+The competition experience is now a packaged React 19 + TypeScript + Vite application named `DUET / SPEAK - Speaking Intelligence Studio`, served by a thin same-origin FastAPI adapter at `127.0.0.1:8765`. The adapter only orchestrates the existing Product V2/frozen Python services. It does not implement scoring. The existing Streamlit competition interface is preserved through `START_COMPETITION_DEMO_LEGACY.bat`; research and teacher workflows remain unchanged on Streamlit.
+
+Home, Assessment, Results, Recent Videos and presenter tools were fully redesigned using a locally bundled editorial type system, custom responsive composition, restrained Motion transitions, Radix focus-managed primitives and a decorative generated audio sculpture. The generated image is explicitly decorative and is not represented as learner evidence. The normal Windows launcher now serves committed production assets and requires no Vite dev server or npm command from the user.
+
+Product V3 adds the approved product-only `Overall Practice Score` at the API presentation boundary. Formula version `nckh12-product-overall-practice-v1` converts Reading Completeness coverage with `1 + 4 * coverage`, then takes the equal-weight mean of Pronunciation, Fluency, Prosody and converted Completeness. It is returned only when all four inputs are valid and the recording is scorable. React displays the backend value and does not reproduce the formula. Status is `DESCRIPTIVE_PRODUCT_COMPOSITE`; presenter designation is `UNVALIDATED_PRODUCT_COMPOSITE`. It is not persisted into research artifacts, not research-validated or standardized, and excludes machine Intelligibility, which remains absent.
+
+The real private Recent Video path was re-executed through local frozen scoring, feedback cache/request preparation, deterministic fallback, result persistence and React Results. The previous NumPy `int64` serialization traceback did not recur. This genuine recording produced a scientifically valid `PARTIAL` result with only Fluency and Completeness; the UI correctly showed Overall unavailable rather than averaging incomplete measures. Returned optional wording failed the existing supported-word validator and safely retained deterministic feedback. No media or transcript was printed or committed.
+
+Responsive visual QA passed at 1920x1080, 1440x900, 1366x768, 768x1024 and 390x844 with no horizontal overflow or missing images. Interaction QA passed for keyboard focus, Enter-operated evidence, dialog focus/Escape, upload drag state, hover/reveal motion, reduced-motion collapse and mobile overflow. Safe screenshots are under `ui_evidence/`; private media, transcript and account details are blurred/hidden. A genuine stable `NOT_SCORABLE` fixture was unavailable, so no fake result or screenshot was fabricated.
+
+Final verification: frontend unit **2 passed**; TypeScript **PASS**; ESLint **PASS**; production build **PASS** (537 modules, 498.26 kB JS / 156.05 kB gzip); focused adapter/Product V2/competition tests **71 passed**; full Python suite **187 passed, 2 skipped**; targeted Streamlit AppTest suite **46 passed**; Python compilation **PASS**; browser visual/interaction QA **PASS**; React, legacy Streamlit and Teacher launchers all started and returned healthy routes. The only warning is the existing third-party Silero VAD deprecation.
+
+`COMPETITION_FREEZE_V1`, P2.4D scorer, MultiPA checkpoint/configuration, calibration, P2.5, target, split and fixed holdout remain unchanged. Frozen hashes still match. No holdout media/outcome was opened or processed, no new media entered research data, and no machine Intelligibility was created.
+
+Architecture, visual decisions, evidence and rollback are documented in `UI_REDESIGN_PLAN.md`, `UI_TRANSFORMATION_REPORT.md` and `competition_product_v3_react.json` (`COMPETITION_PRODUCT_V3_REACT`). ChatGPT is genuinely connected; real TikTok import remains `PENDING_USER_TEST_URL` because no authorized user URL was supplied.
+
+**Current status:** READY FOR USER SMOKE TEST, then competition rehearsal.
+
+**Next action:** restart `START_COMPETITION_DEMO.bat`, inspect Home/Assessment/Results/Recent on the presentation computer, and optionally test one user-authorized TikTok URL. Do not reopen scorer research or the holdout.
+

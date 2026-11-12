@@ -34,6 +34,8 @@ calibration/
 task_profiles/
 output/
 screenshots/
+!ui_evidence/
+!ui_evidence/**
 
 # Large/generated media and model artifacts
 *.wav
