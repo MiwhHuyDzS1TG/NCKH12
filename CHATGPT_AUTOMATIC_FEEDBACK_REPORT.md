@@ -73,3 +73,11 @@ Cached valid personalized feedback may be shown offline because it has already p
 - Real feedback smoke test: `PENDING_USER_AUTHORIZATION`.
 
 These pending human-operated checks are not code failures. They must not be marked successful until a user explicitly completes authorization and runs one permitted non-holdout assessment.
+
+## Product V2 NumPy serialization fix (2026-11-12)
+
+The live scorer can return NumPy scalar and array types in measured evidence. Product V2 now applies one shared recursive `to_jsonable()` boundary before canonical hashing, outbound text-evidence encoding, cache persistence, local assessment-result persistence, media-registry persistence, and manual GPT artifact hashing/writes. NumPy integers, floating-point values, booleans, arrays, dictionaries, lists, and tuples are converted to equivalent native JSON values without stringifying numbers or dropping evidence.
+
+Canonical key ordering remains deterministic. Non-finite or unsupported values raise a controlled serialization failure. Automatic feedback then returns to local deterministic evidence-based feedback while preserving the completed assessment and frozen scores.
+
+The exact pre-fix `TypeError: Object of type int64 is not JSON serializable` was reproduced. The original user-media result then passed cache/request preparation and Results rendering after the fix. One real authorized feedback request was attempted; the returned wording contained an unsupported review word and was correctly rejected by the existing evidence validator, so the safe deterministic fallback was shown. No teacher rating, holdout information, audio, or video was transmitted.

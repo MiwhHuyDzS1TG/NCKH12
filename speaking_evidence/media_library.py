@@ -16,6 +16,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 
 from speaking_evidence.chatgpt_auth import app_data_root
+from speaking_evidence.json_utils import to_jsonable
 
 
 MEDIA_SCHEMA_VERSION = "nckh12-user-media-v1"
@@ -52,7 +53,8 @@ def _sha256(payload: bytes) -> str:
 def _atomic_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+    temporary.write_text(json.dumps(to_jsonable(payload), ensure_ascii=False,
+                                    indent=2, allow_nan=False) + "\n",
                          encoding="utf-8")
     try:
         os.chmod(temporary, 0o600)

@@ -18,6 +18,7 @@ from speaking_evidence.competition_demo import (
     TARGET_PROFILE_SHA256,
     load_demo_cache,
 )
+from speaking_evidence.json_utils import to_jsonable
 
 
 REVIEW_VERSION = "competition-gpt-review-v1"
@@ -43,7 +44,8 @@ def _load(path: Path) -> dict:
 
 def _write(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(to_jsonable(payload), ensure_ascii=False, indent=2,
+                               allow_nan=False) + "\n", encoding="utf-8")
 
 
 def _sha256_bytes(payload: bytes) -> str:
@@ -61,7 +63,8 @@ def scorer_fingerprint(item: dict) -> str:
         "model_versions": item["model_versions"],
         "scores": item["scores"],
     }
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    canonical = json.dumps(to_jsonable(payload), sort_keys=True,
+                           separators=(",", ":"), allow_nan=False).encode("utf-8")
     return _sha256_bytes(canonical)
 
 

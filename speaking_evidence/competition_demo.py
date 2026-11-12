@@ -23,6 +23,7 @@ from duet_segmenter.smart_pipeline import run_profiled
 from speaking_evidence.asr import FasterWhisperBackend
 from speaking_evidence.audio import prepare_turn_audio
 from speaking_evidence.fluency import measure_fluency
+from speaking_evidence.json_utils import to_jsonable
 from speaking_evidence.p22 import align_completeness, apply_mapping
 from speaking_evidence.p24d_multipa import (
     aggregate_video,
@@ -72,20 +73,11 @@ def _load(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _json_default(value: object) -> object:
-    """Convert numeric scalar outputs without changing their measured value."""
-    item = getattr(value, "item", None)
-    if callable(item):
-        return item()
-    if isinstance(value, Path):
-        return str(value)
-    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
-
-
 def _write(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default) + "\n",
+        json.dumps(to_jsonable(payload), ensure_ascii=False, indent=2,
+                   allow_nan=False) + "\n",
         encoding="utf-8",
     )
 

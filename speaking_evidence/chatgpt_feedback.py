@@ -18,6 +18,7 @@ from speaking_evidence.chatgpt_auth import (
     RESPONSES_ENDPOINT,
     app_data_root,
 )
+from speaking_evidence.json_utils import to_jsonable
 
 
 AUTO_FEEDBACK_VERSION = "competition-auto-feedback-v1"
@@ -50,8 +51,10 @@ class AutomaticFeedbackError(RuntimeError):
 
 
 def _canonical(value: object) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True,
-                      separators=(",", ":")).encode("utf-8")
+    return json.dumps(
+        to_jsonable(value), ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"), allow_nan=False,
+    ).encode("utf-8")
 
 
 def _sha(value: object) -> str:
@@ -68,6 +71,7 @@ def build_text_evidence(result: dict) -> dict:
     It is intentionally allowlisted. Media, local paths, human labels, split
     metadata, and research-only fields cannot enter this payload.
     """
+    result = to_jsonable(result)
     scores = result.get("scores", {})
     evidence = result.get("evidence", {})
     fluency = evidence.get("fluency", {})
@@ -134,7 +138,7 @@ def build_text_evidence(result: dict) -> dict:
                  "audio", "video", "local_path")
     if any(any(token in key for token in forbidden) for key in keys(payload)):
         raise AutomaticFeedbackError("unsafe_evidence_payload")
-    return payload
+    return to_jsonable(payload)
 
 
 def scorer_hash(result: dict) -> str:
@@ -209,7 +213,9 @@ def prompt_for(evidence: dict) -> list[dict]:
     )
     return [
         {"role": "developer", "content": instruction},
-        {"role": "user", "content": json.dumps(evidence, ensure_ascii=False, sort_keys=True)},
+        {"role": "user", "content": json.dumps(
+            to_jsonable(evidence), ensure_ascii=False, sort_keys=True, allow_nan=False
+        )},
     ]
 
 
@@ -356,18 +362,27 @@ def automatic_feedback(result: dict, auth: ChatGPTAuthManager | None = None,
         model = profile.get("selected_model")
     if not isinstance(model, str):
         raise AutomaticFeedbackError("no_available_models")
-    cached = load_cached_feedback(result, model, cache_root)
+    try:
+        cached = load_cached_feedback(result, model, cache_root)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise AutomaticFeedbackError("feedback_serialization_failed") from exc
     if cached:
         feedback, provenance = cached
         provenance = {**provenance, "cache_hit": True}
         return feedback, provenance
-    evidence = build_text_evidence(result)
+    try:
+        evidence = build_text_evidence(result)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise AutomaticFeedbackError("feedback_serialization_failed") from exc
     try:
         payload = stream_structured_feedback(
             profile["access_token"], model, evidence, client_factory=client_factory)
     except ChatGPTConnectionError as exc:
         raise AutomaticFeedbackError(exc.code) from exc
-    identity = cache_identity(result, model)
+    try:
+        identity = cache_identity(result, model)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise AutomaticFeedbackError("feedback_serialization_failed") from exc
     provenance = {
         "feedback_source": "CHATGPT_PLAN_AUTOMATIC_REVIEW",
         "review_version": AUTO_FEEDBACK_VERSION,
@@ -389,7 +404,13 @@ def automatic_feedback(result: dict, auth: ChatGPTAuthManager | None = None,
     path = _feedback_path(identity, cache_root)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    try:
+        serialized = json.dumps(
+            to_jsonable(record), ensure_ascii=False, indent=2, allow_nan=False
+        ) + "\n"
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise AutomaticFeedbackError("feedback_serialization_failed") from exc
+    temporary.write_text(serialized, encoding="utf-8")
     try:
         os.chmod(temporary, 0o600)
     except OSError:

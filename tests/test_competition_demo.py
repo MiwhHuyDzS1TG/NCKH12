@@ -135,10 +135,17 @@ def test_invalid_score_never_becomes_a_number():
 
 def test_live_result_writer_preserves_numpy_measurements_as_plain_json(tmp_path):
     destination = tmp_path / "result.json"
-    _write(destination, {"pause_count": np.int64(4), "coverage": np.float64(0.95)})
+    _write(destination, {
+        "pause_count": np.int64(4),
+        "coverage": np.float64(0.95),
+        "usable": np.bool_(True),
+        "nested": [{"values": np.array([1.5, 2.5], dtype=np.float32)}],
+    })
     assert json.loads(destination.read_text(encoding="utf-8")) == {
         "pause_count": 4,
         "coverage": 0.95,
+        "usable": True,
+        "nested": [{"values": [1.5, 2.5]}],
     }
 
 
@@ -159,6 +166,27 @@ def test_not_scorable_state_blocks_score_dashboard():
     assert "Assessment completed" not in rendered
     assert "Sound accuracy and clarity" not in rendered
     assert "Your feedback" not in rendered
+
+
+def test_results_ui_survives_automatic_feedback_serialization_fallback():
+    result = copy.deepcopy(CACHE["items"][0])
+    expected_scores = copy.deepcopy(result["scores"])
+    result["feedback_notice"] = (
+        "Personalized feedback was unavailable. Local evidence-based feedback is shown instead."
+    )
+    result["automatic_feedback_error_code"] = "feedback_serialization_failed"
+    app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60)
+    app.query_params["mode"] = "competition_demo"
+    app.session_state["competition_view"] = "results"
+    app.session_state["competition_result"] = result
+    app.run()
+    assert not app.exception
+    rendered = " ".join(str(element.value) for group in
+                        (app.markdown, app.info, app.warning, app.error)
+                        for element in group)
+    assert "Your feedback" in rendered
+    assert "Local evidence-based feedback is shown instead." in rendered
+    assert app.session_state["competition_result"]["scores"] == expected_scores
 
 
 def test_competition_landing_isolated_from_research_console():

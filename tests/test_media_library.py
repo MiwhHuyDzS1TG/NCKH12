@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 import httpx
+import numpy as np
 import pytest
 
 import speaking_evidence.media_library as media_module
@@ -18,6 +19,28 @@ from speaking_evidence.media_library import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_media_registry_json_boundary_normalizes_nested_numpy(tmp_path):
+    destination = tmp_path / "registry.json"
+    media_module._atomic_json(destination, {
+        "schema_version": MEDIA_SCHEMA_VERSION,
+        "items": [{
+            "duration_seconds": np.float32(42.5),
+            "frame_count": np.int64(120),
+            "ready": np.bool_(True),
+            "shape": np.array([1080, 1920], dtype=np.int64),
+        }],
+    })
+    assert json.loads(destination.read_text(encoding="utf-8")) == {
+        "schema_version": MEDIA_SCHEMA_VERSION,
+        "items": [{
+            "duration_seconds": 42.5,
+            "frame_count": 120,
+            "ready": True,
+            "shape": [1080, 1920],
+        }],
+    }
 
 
 def _mock_media(monkeypatch):

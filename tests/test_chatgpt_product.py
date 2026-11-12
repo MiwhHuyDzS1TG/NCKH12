@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+import numpy as np
 import pytest
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
@@ -25,14 +26,17 @@ from speaking_evidence.chatgpt_auth import (
 from speaking_evidence.chatgpt_feedback import (
     AUTO_PROMPT_VERSION,
     AutomaticFeedbackError,
+    _canonical,
     attach_automatic_feedback,
     automatic_feedback,
     build_text_evidence,
     cache_identity,
     load_cached_feedback,
+    prompt_for,
     stream_structured_feedback,
     validate_feedback,
 )
+from speaking_evidence.json_utils import to_jsonable
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -318,3 +322,105 @@ def test_automatic_failure_preserves_scores_and_returns_deterministic_path(tmp_p
     assert code == "subscription_sharing_usage_limit_exceeded"
     assert result["scores"] == original_scores
     assert "automatic_feedback" not in result
+
+
+def test_nested_numpy_values_have_native_deterministic_canonical_json():
+    measured = {
+        "integer": np.int64(7),
+        "floating32": np.float32(1.5),
+        "floating64": np.float64(2.25),
+        "bool": np.bool_(True),
+        "array": np.array([[1, 2], [3, 4]], dtype=np.int64),
+        "nested": [{"tuple": (np.float32(0.5), np.bool_(False))}],
+    }
+    native = {
+        "integer": 7,
+        "floating32": 1.5,
+        "floating64": 2.25,
+        "bool": True,
+        "array": [[1, 2], [3, 4]],
+        "nested": [{"tuple": [0.5, False]}],
+    }
+    assert _canonical(measured) == _canonical(native)
+    assert json.loads(_canonical(measured)) == native
+
+
+def _numpy_evidence_result() -> dict:
+    result = copy.deepcopy(DEMO)
+    result["scores"]["pronunciation"] = np.float64(result["scores"]["pronunciation"])
+    result["scores"]["fluency"] = np.float32(4.5)
+    result["scores"]["prosody"] = np.float64(result["scores"]["prosody"])
+    result["completeness"]["coverage"] = np.float64(result["completeness"]["coverage"])
+    result["completeness"]["matched_word_count"] = np.int64(
+        result["completeness"]["matched_word_count"])
+    result["completeness"]["possible_asr_uncertainty"] = np.array(
+        result["completeness"]["possible_asr_uncertainty"], dtype=object)
+    fluency = result["evidence"]["fluency"]
+    fluency["pause_count"] = np.int64(fluency["pause_count"])
+    fluency["long_pause_count"] = np.int64(fluency["long_pause_count"])
+    fluency["longest_pause_sec"] = np.float32(fluency["longest_pause_sec"])
+    fluency["mean_length_of_run_words"] = np.float64(fluency["mean_length_of_run_words"])
+    result["evidence"]["raw_multipa"]["prosody"] = np.float32(
+        result["evidence"]["raw_multipa"]["prosody"])
+    result["evidence"]["serialization_probe"] = {
+        "ok": np.bool_(True), "array": np.array([np.int64(1), np.int64(2)])
+    }
+    return result
+
+
+def test_numpy_machine_evidence_cache_identity_and_request_are_json_safe():
+    result = _numpy_evidence_result()
+    identity = cache_identity(result, "model-a")
+    assert identity == cache_identity(to_jsonable(result), "model-a")
+    evidence = build_text_evidence(result)
+    json.dumps(evidence, allow_nan=False)
+    json.dumps(prompt_for(evidence), allow_nan=False)
+    assert evidence["criterion_scores"]["fluency"] == 4.5
+    assert isinstance(evidence["fluency_evidence"]["pause_count"], int)
+    assert isinstance(evidence["completeness_evidence"]["matched_target_words"], int)
+
+
+def test_numpy_assessment_path_writes_and_reads_feedback_cache_without_score_change(tmp_path):
+    store = CredentialStore(tmp_path / "auth")
+    store.save(_profile("model-a"))
+    manager = ChatGPTAuthManager(store)
+    result = _numpy_evidence_result()
+    original_scores = copy.deepcopy(result["scores"])
+    evidence = build_text_evidence(result)
+    word = evidence["pronunciation_evidence"]["review_words"][0]["word"]
+    calls = {"count": 0}
+
+    def handler(_request):
+        calls["count"] += 1
+        return httpx.Response(200, content=_completed_sse(_feedback_payload(word)))
+
+    enriched, error = attach_automatic_feedback(
+        result, auth=manager, cache_root=tmp_path / "cache",
+        client_factory=_factory(handler),
+    )
+    assert error is None and calls["count"] == 1
+    assert to_jsonable(enriched["scores"]) == to_jsonable(original_scores)
+    assert isinstance(enriched["scores"]["fluency"], np.float32)
+    cache_files = list((tmp_path / "cache").glob("*.json"))
+    assert len(cache_files) == 1
+    json.loads(cache_files[0].read_text(encoding="utf-8"))
+    cached = load_cached_feedback(result, "model-a", tmp_path / "cache")
+    assert cached is not None
+    assert cached[1]["cache_hit"] is False
+
+
+def test_unexpected_feedback_serialization_failure_preserves_assessment(tmp_path):
+    store = CredentialStore(tmp_path / "auth")
+    store.save(_profile("model-a"))
+    manager = ChatGPTAuthManager(store)
+    result = copy.deepcopy(DEMO)
+    original_scores = copy.deepcopy(result["scores"])
+    result["evidence"]["fluency"]["pause_count"] = object()
+    enriched, error = attach_automatic_feedback(
+        result, auth=manager, cache_root=tmp_path / "cache",
+        client_factory=_factory(lambda _request: pytest.fail("request must not be sent")),
+    )
+    assert error == "feedback_serialization_failed"
+    assert enriched["scores"] == original_scores
+    assert enriched["feedback"] == result["feedback"]
+    assert "automatic_feedback" not in enriched

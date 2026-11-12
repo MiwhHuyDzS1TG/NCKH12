@@ -1559,3 +1559,13 @@ Reports: `CHATGPT_AUTOMATIC_FEEDBACK_REPORT.md` and `MEDIA_IMPORT_LIBRARY_REPORT
 
 Final measured Product V2 verification: ChatGPT integration **16 passed**; media/TikTok/library **17 passed**; competition UI/pipeline **19 passed**; full normal suite **168 passed, 2 skipped**; Python compilation and Streamlit AppTest passed; real local media-I/O smoke passed; and browser QA passed at 1366x768 and 1920x1080 with no horizontal overflow or clipping. The single warning is the existing non-blocking Silero VAD dependency deprecation notice.
 
+# COMPETITION PRODUCT V2 - NUMPY SERIALIZATION HOTFIX (2026-11-12)
+
+The Product V2 automatic-feedback path previously crashed after a valid local assessment because `cache_identity()` passed NumPy evidence directly to standard `json.dumps()`. The exact `TypeError: Object of type int64 is not JSON serializable` was reproduced before the fix.
+
+One shared recursive JSON boundary now normalizes NumPy integer, float, boolean, array, dict, list, and tuple values while preserving numeric types and deterministic canonical ordering. It is used for feedback cache identity, request text evidence, feedback cache writes, frozen local result writes, media registry writes, and GPT review artifact hashing/persistence. Unsupported/non-finite values fail the optional feedback layer safely; local deterministic feedback and unchanged frozen scores remain available.
+
+The original user-media result completed the repaired cache/request path with a real authorized request. The external wording failed the existing supported-word validator and therefore used the intended deterministic fallback. Recent Videos -> View result opened the Results UI with all frozen scores visible and no traceback. No audio/video, teacher ratings, holdout information, machine Intelligibility, or Overall was sent or created.
+
+Verification: ChatGPT feedback **20 passed**; media/Product V2 **18 passed**; competition **20 passed**; full suite **174 passed, 2 skipped**; Python compilation and Streamlit AppTest passed. The only suite warning remains the existing third-party Silero VAD deprecation notice. Frozen scorer, target, calibration, MultiPA, Fluency, Prosody, Completeness, split, and research artifacts are unchanged; holdout was not opened or processed.
+

@@ -409,7 +409,7 @@ def _load_saved_result(library: MediaLibrary, record: dict) -> dict:
             cached = load_cached_feedback(result, model)
             if cached:
                 result["automatic_feedback"], result["automatic_feedback_provenance"] = cached
-    except (ChatGPTConnectionError, ValueError):
+    except (ChatGPTConnectionError, TypeError, ValueError, OverflowError):
         pass
     return result
 
