@@ -19,8 +19,8 @@ import { WarningCircle } from '@phosphor-icons/react/dist/csr/WarningCircle'
 import { X } from '@phosphor-icons/react/dist/csr/X'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, NavLink, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { api } from './api'
+import { Link, Navigate, NavLink, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { ApiError, api } from './api'
 import type { AssessmentResult, Bootstrap, CriterionView, DemoSummary, JobState, MediaItem } from './types'
 
 function useBootstrap() {
@@ -131,6 +131,7 @@ function App() {
     <Routes>
       <Route path="/" element={<Shell bootstrap={data} refresh={refresh}><Home bootstrap={data} error={error} /></Shell>} />
       <Route path="/assess" element={<Shell tone="dark" bootstrap={data} refresh={refresh}><Assessment demos={data?.demos ?? []} /></Shell>} />
+      <Route path="/assessment" element={<Navigate to="/assess" replace />} />
       <Route path="/recent" element={<Shell bootstrap={data} refresh={refresh}><Recent /></Shell>} />
       <Route path="/results/:source/:id" element={<Shell bootstrap={data} refresh={refresh}><Results /></Shell>} />
       <Route path="/legacy" element={<Legacy />} />
@@ -318,19 +319,26 @@ function Results() {
   const { source = '', id = '' } = useParams()
   const navigate = useNavigate()
   const routeKey = `${source}:${id}`
-  const [loaded, setLoaded] = useState<{ key: string; result: AssessmentResult | null; error: string | null }>({ key: '', result: null, error: null })
+  const [attempt, setAttempt] = useState(0)
+  const [loaded, setLoaded] = useState<{ key: string; result: AssessmentResult | null; error: 'NOT_FOUND' | 'API_ERROR' | null }>({ key: '', result: null, error: null })
   useEffect(() => {
     let active = true
     const promise = source === 'demo' ? api.demoResult(id) : source === 'media' ? api.mediaResult(id) : Promise.reject(new Error('Unknown result source.'))
     promise
       .then((result) => { if (active) setLoaded({ key: routeKey, result, error: null }) })
-      .catch((reason) => { if (active) setLoaded({ key: routeKey, result: null, error: reason instanceof Error ? reason.message : 'Result is unavailable.' }) })
+      .catch((reason) => {
+        if (active) setLoaded({
+          key: routeKey,
+          result: null,
+          error: reason instanceof ApiError && reason.status === 404 ? 'NOT_FOUND' : 'API_ERROR',
+        })
+      })
     return () => { active = false }
-  }, [source, id, routeKey])
+  }, [source, id, routeKey, attempt])
   const result = loaded.key === routeKey ? loaded.result : null
   const error = loaded.key === routeKey ? loaded.error : null
-  if (error) return <div className="state-page"><ErrorNotice message={error} /><button className="button primary" onClick={() => navigate('/assess')}>Return to assessment</button></div>
-  if (!result) return <div className="state-page"><span className="activity-ring dark" /><h1>Opening your speaking snapshot</h1></div>
+  if (error) return <div className="state-page"><WarningCircle size={42} /><h1>{error === 'NOT_FOUND' ? 'This assessment result could not be found.' : "We couldn't load this assessment."}</h1><p>Your saved recordings have not been changed.</p><div className="state-actions"><button className="button primary" onClick={() => setAttempt((value) => value + 1)}>Try again</button><button className="button secondary" onClick={() => navigate('/')}>Back to Home</button></div></div>
+  if (!result) return <div className="state-page result-loading"><span className="activity-ring dark" /><p className="kicker">Opening result</p><h1>Opening your speaking snapshot</h1><div className="result-skeleton" aria-hidden="true"><i /><i /><i /></div></div>
   if (result.status === 'NOT_SCORABLE') return <div className="state-page"><WarningCircle size={42} /><h1>This recording could not be scored reliably.</h1><p>Try a completed Duet with a clearer learner voice and less background interference.</p><button className="button primary" onClick={() => navigate('/assess')}>Try another video</button></div>
   return <ResultStory result={result} />
 }
@@ -345,10 +353,7 @@ function ResultStory({ result }: { result: AssessmentResult }) {
     <article className="result-story">
       <section className="result-hero">
         <div className="result-title"><p className="kicker">Your speaking snapshot</p><h1>{result.display_name}</h1><p>Topic: {result.target_topic}</p><div className="result-badges"><span>Development / preliminary</span><span>{result.feedback.source === 'CHATGPT' ? 'Personalized wording' : 'Evidence-based feedback'}</span></div><OverallPractice overall={result.overall_practice_score} /></div>
-        <div className="media-stage">
-          <video controls preload="metadata" src={result.media.video_url} aria-label="Completed Duet video" />
-          {result.media.audio_url && <div className="audio-player"><Headphones weight="fill" /><div><strong>Learner audio</strong><small>Raw cropped from the completed Duet</small></div><audio controls preload="metadata" src={result.media.audio_url} /></div>}
-        </div>
+        <ResultMedia videoUrl={result.media.video_url} audioUrl={result.media.audio_url} />
       </section>
 
       <section className="criteria-story" aria-labelledby="criteria-title">
@@ -392,6 +397,18 @@ function ResultStory({ result }: { result: AssessmentResult }) {
       {params.get('presenter') === '1' && <section className="presenter-provenance"><p className="kicker">Presenter provenance</p><div><span>Assessment source<strong>{result.provenance.audio_source_type}</strong></span><span>Inference<strong>{result.provenance.genuine_frozen_inference ? 'Frozen configuration' : 'Unavailable'}</strong></span><span>Product summary<strong>{result.overall_practice_score?.presenter_designation ?? 'UNAVAILABLE'}</strong></span><span>Research membership<strong>FALSE</strong></span></div></section>}
     </article>
   )
+}
+
+function ResultMedia({ videoUrl, audioUrl }: { videoUrl: string; audioUrl: string | null }) {
+  const [videoFailed, setVideoFailed] = useState(false)
+  const [audioFailed, setAudioFailed] = useState(false)
+  return <div className="media-stage">
+    {videoFailed
+      ? <div className="media-unavailable"><VideoCamera weight="duotone" /><strong>Media preview unavailable</strong><span>Your assessment result is still available below.</span></div>
+      : <video controls preload="metadata" src={videoUrl} aria-label="Completed Duet video" onError={() => setVideoFailed(true)} />}
+    {audioUrl && !audioFailed && <div className="audio-player"><Headphones weight="fill" /><div><strong>Learner audio</strong><small>Raw cropped from the completed Duet</small></div><audio controls preload="metadata" src={audioUrl} onError={() => setAudioFailed(true)} /></div>}
+    {audioUrl && audioFailed && <div className="audio-unavailable"><Headphones weight="fill" /> Learner audio preview unavailable</div>}
+  </div>
 }
 
 function OverallPractice({ overall }: { overall: AssessmentResult['overall_practice_score'] }) {

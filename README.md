@@ -2,7 +2,7 @@
 
 Local research proof of concept for Grade 10 EFL controlled-reading practice. The system aligns a known TikTok template with a completed Duet, locates learner speech, extracts evidence from the original Duet audio, and prepares development-only speaking assessment calibration.
 
-> **Current status (2026-11-12): competition product and research console available.** The frozen speaking pipeline now has a premium local React competition surface, genuine development demos, upload/library assessment, evidence-grounded feedback and a descriptive product-only Overall Practice Score. Research and teacher workflows remain in Streamlit. Scientific limitations and frozen boundaries remain in force.
+> **Current status (2026-11-13): competition final local release ready.** The frozen speaking pipeline has a robust local React competition surface, genuine development demos, upload/library assessment, evidence-grounded feedback and a descriptive product-only Overall Practice Score. Research and teacher workflows remain in Streamlit. Scientific limitations and frozen boundaries remain in force.
 
 This project does **not** claim CEFR, B2, or IELTS validity. Current outputs are development research evidence, not official proficiency results.
 
@@ -69,10 +69,10 @@ The ASR models are downloaded by faster-whisper when first used. Keep model cach
 For the competition product, double-click:
 
 ```text
-START_COMPETITION_DEMO.bat
+START_NCKH12.bat
 ```
 
-It opens the packaged React product at `http://127.0.0.1:8765/`. No Vite server or npm command is required. Use `START_COMPETITION_DEMO_LEGACY.bat` for the preserved Streamlit competition interface.
+Keep the clearly titled backend terminal open while using the app; press Ctrl+C there to stop it. The launcher checks the verified production build and frozen configuration, waits for a healthy local server, then opens `http://127.0.0.1:8765/`. No Vite server, npm command or Internet connection is required for core local assessment. Use `START_COMPETITION_DEMO_LEGACY.bat` only as the preserved Streamlit fallback. `START_COMPETITION_DEMO.bat` remains a developer/historical React launcher.
 
 For research work:
 

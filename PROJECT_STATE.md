@@ -1605,3 +1605,25 @@ The frozen scorer, calibration, P2.5, MultiPA, Fluency, Prosody, Completeness, t
 
 **Next action:** restart `START_COMPETITION_DEMO.bat` and rehearse D043, D064, D048 plus one Recent Video partial result. Do not modify scoring or open the holdout.
 
+# COMPETITION FINAL LOCAL RELEASE (2026-11-13)
+
+`COMPETITION_FINAL_RELEASE` is the final locally testable competition build. The ordinary presenter now starts the product only by double-clicking `START_NCKH12.bat`. One titled backend terminal remains visible, the launcher uses the committed production build without npm/Vite/Internet, binds to `127.0.0.1`, validates frozen configuration and media readiness, rejects unrelated/stale port owners, waits for release-matched health, then opens the browser. `START_COMPETITION_DEMO_LEGACY.bat` remains the rollback; teacher and research launchers are unchanged.
+
+The D064 blank screenshot was not reproducible in a clean browser on current `origin/main`, but the release audit found the deterministic stale-build mechanism: every non-API response, including `index.html`, had been cached for one hour while Vite replaces content-hashed JS/CSS filenames. A cached old index could request an asset removed by the new build, leaving React unable to mount. SPA HTML and deep-link responses now use `Cache-Control: no-store`; hashed assets alone are immutable. D043, D064 and D048 direct URLs and refreshes pass at 1920x1080, 1366x768 and 390px with no uncaught console errors or overflow.
+
+React now has a top-level Error Boundary, explicit result loading/not-found/API-error states, runtime result-contract validation and video/audio fallbacks. Unknown API routes, missing user results/media and missing assets return real 404 responses instead of HTML 200 or generic 500. The CSP permits bundled local/data fonts, eliminating the previous console violations. `/assessment` cleanly resolves to the canonical `/assess` workspace.
+
+The visible terminal reports safe assessment IDs and timed MEDIA, PHASE1, ASR, PRONUNCIATION, FLUENCY, PROSODY, COMPLETENESS, OVERALL, GPT/FEEDBACK and RESULT stages. It never prints OAuth credentials, private paths, transcripts, GPT payloads, teacher ratings or holdout labels. A fresh real saved-video smoke completed upload, local frozen scoring, a genuine PARTIAL result, accepted authorized ChatGPT feedback and Results in about 230 seconds. A separate D043 development-only real ChatGPT request also passed schema/evidence validation with text-only evidence, no audio/video and no score replacement.
+
+The private media lifecycle was verified with two distinct real local videos, Unicode/spaced filenames, hash duplicate reuse, restart persistence, identity separation and removal of one item without affecting the other. Core local use works offline with deterministic feedback; real public TikTok import remains `PENDING_USER_TEST_URL` because no user-authorized URL was supplied.
+
+Fresh final verification: frontend unit **5 passed**; TypeScript **PASS**; ESLint **PASS**; production build **PASS**; Playwright release regression **8 passed**; focused Product API/Product V2/media/ChatGPT/competition **77 passed**; complete Python suite **193 passed, 2 skipped**; compilation **PASS**. The only retained warnings are the non-blocking Vite chunk-size advisory and third-party Silero package-resource deprecation.
+
+`COMPETITION_FREEZE_V1`, P2.4D scorer, MultiPA, criterion mappings, calibration, P2.5, target, split and fixed holdout remain unchanged. No machine Intelligibility was added; Overall remains a descriptive, unvalidated product composite; new media remains outside research.
+
+**Current status:** READY FOR COMPETITION; only the external user-owned TikTok smoke is pending and does not block local competition use.
+
+**Next action:** competition rehearsal only. Double-click `START_NCKH12.bat`; do not begin another feature sprint unless a P0 release defect appears.
+
+Safe app-only figures for the written research report are frozen under `ui_evidence/final_release/` and indexed by route and purpose. The set contains Home, Assessment, full D043 Results, expanded D043 evidence, an isolated empty Recent Videos state and 390px mobile Results. Every image was visually reviewed; none contains OAuth identity, a local path, private uploaded media, teacher/holdout data or unrelated browser/desktop content. The genuine private PARTIAL smoke was intentionally not captured.
+

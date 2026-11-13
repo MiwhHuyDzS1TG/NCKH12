@@ -8,8 +8,10 @@ from __future__ import annotations
 import json
 import math
 import threading
+import time
 import uuid
 from copy import deepcopy
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +20,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from speaking_evidence.chatgpt_auth import ChatGPTAuthManager, ChatGPTConnectionError
+from speaking_evidence.chatgpt_auth import (
+    ChatGPTAuthManager,
+    ChatGPTConnectionError,
+    redact_secrets,
+)
 from speaking_evidence.chatgpt_feedback import attach_automatic_feedback
 from speaking_evidence.competition_demo import (
     DEMO_IDS,
@@ -47,6 +53,9 @@ _auth_lock = threading.Lock()
 _auth_state: dict[str, str | None] = {"state": "IDLE", "message": None}
 OVERALL_PRACTICE_VERSION = "nckh12-product-overall-practice-v1"
 CRITERION_CONTRACT_VERSION = "nckh12-product-criteria-v1"
+API_SCHEMA_VERSION = "nckh12-product-api-v1"
+PRODUCT_RELEASE = "COMPETITION_FINAL_RELEASE"
+FRONTEND_BUILD_VERSION = "duet-speak-studio-v1"
 
 
 class TikTokRequest(BaseModel):
@@ -59,11 +68,37 @@ class ModelRequest(BaseModel):
 
 
 def _public_error(error: Exception) -> HTTPException:
+    if isinstance(error, HTTPException):
+        return error
     if isinstance(error, MediaLibraryError):
-        return HTTPException(status_code=400, detail={"code": error.code, "message": error.public_message})
+        status = 404 if error.code in {"media_not_found", "thumbnail_missing"} else 400
+        if error.code in {"invalid_media_registry", "unsafe_media_path"}:
+            status = 409
+        return HTTPException(status_code=status, detail={"code": error.code, "message": error.public_message})
     if isinstance(error, ChatGPTConnectionError):
         return HTTPException(status_code=400, detail={"code": error.code, "message": error.public_message})
     return HTTPException(status_code=500, detail={"code": "operation_failed", "message": "The operation could not be completed safely."})
+
+
+def _runtime_log(level: str, channel: str, message: str,
+                 assessment_id: str | None = None) -> None:
+    """Write a concise, credential-safe event to the visible competition terminal."""
+    stamp = datetime.now().strftime("%H:%M:%S")
+    request = f" [{assessment_id}]" if assessment_id else ""
+    safe = redact_secrets(str(message)).replace("\r", " ").replace("\n", " ")
+    print(f"[{stamp}] {level:<5}{request} {channel:<13} {safe}", flush=True)
+
+
+def _feedback_failure_text(code: str) -> str:
+    return {
+        "not_connected": "ChatGPT is not connected",
+        "missing_required_scope": "ChatGPT permission is unavailable",
+        "plan_usage_unavailable": "ChatGPT plan usage is unavailable",
+        "feedback_validation_failed": "Response rejected by the evidence validator",
+        "feedback_schema_invalid": "Response schema was invalid",
+        "feedback_stream_incomplete": "Response stream was incomplete",
+        "feedback_serialization_failed": "Feedback evidence could not be serialized safely",
+    }.get(code, "Personalized feedback was unavailable")
 
 
 def _ensure_local(request: Request) -> None:
@@ -284,6 +319,8 @@ def _write_result(path: Path, result: dict) -> None:
 
 def _assessment_worker(job_id: str, media_id: str) -> None:
     library = MediaLibrary()
+    assessment_id = job_id.removeprefix("job_")[:6].upper()
+    started = time.perf_counter()
     try:
         record = library.get(media_id)
         source = _safe_media_file(Path(record["local_path"]), library.items_root)
@@ -292,19 +329,67 @@ def _assessment_worker(job_id: str, media_id: str) -> None:
         def notify(message: str) -> None:
             with _jobs_lock:
                 _jobs[job_id].update(state="RUNNING", message=message)
+            channel = {
+                "Video received": "MEDIA",
+                "Learner speech identified": "PHASE1",
+                "Audio quality verified": "PHASE1",
+                "ASR transcribing": "ASR",
+                "ASR transcript ready": "ASR",
+                "Pronunciation analyzed": "PRONUNCIATION",
+                "Fluency measured": "FLUENCY",
+                "Prosody analyzed": "PROSODY",
+                "Reading coverage checked": "COMPLETENESS",
+                "Evidence-based feedback prepared": "FEEDBACK",
+            }.get(message, "PIPELINE")
+            elapsed = time.perf_counter() - started
+            _runtime_log("INFO", channel, f"{message} ({elapsed:.1f}s)", assessment_id)
 
         result = run_live_analysis(ROOT, source, work_dir, progress=notify)
         if result.get("status") != "NOT_SCORABLE":
+            if result.get("status") == "PARTIAL":
+                _runtime_log(
+                    "WARN", "PRONUNCIATION",
+                    "Pronunciation and Prosody unavailable; valid criteria remain visible",
+                    assessment_id,
+                )
+            overall = build_overall_practice_score(
+                result.get("scores", {}), result.get("completeness", {}))
+            _runtime_log(
+                "INFO" if overall else "WARN", "OVERALL",
+                "Overall Practice Score prepared" if overall else "Overall unavailable for this partial assessment",
+                assessment_id,
+            )
+            _runtime_log("INFO", "GPT", "Preparing personalized feedback", assessment_id)
             enriched, feedback_error = attach_automatic_feedback(result)
             result = enriched
             if feedback_error:
                 result["automatic_feedback_error_code"] = feedback_error
+                _runtime_log(
+                    "WARN", "GPT",
+                    f"{_feedback_failure_text(feedback_error)}; local deterministic feedback used",
+                    assessment_id,
+                )
+            else:
+                _runtime_log("INFO", "GPT", "Personalized feedback accepted", assessment_id)
+        else:
+            _runtime_log(
+                "WARN", "RESULT", "Recording was not scorable; no scores were created",
+                assessment_id,
+            )
         _write_result(work_dir / "result.json", result)
         result_id = f"result_{record['sha256'][:16]}"
         library.mark_assessed(media_id, result_id)
         with _jobs_lock:
             _jobs[job_id].update(state="COMPLETE", message="Assessment ready", result_id=result_id)
-    except Exception:
+        _runtime_log(
+            "INFO", "RESULT", f"Assessment ready ({time.perf_counter() - started:.1f}s)",
+            assessment_id,
+        )
+    except Exception as error:
+        _runtime_log(
+            "ERROR", "RESULT", f"Assessment stopped safely ({type(error).__name__})",
+            assessment_id,
+        )
         with _jobs_lock:
             _jobs[job_id].update(
                 state="FAILED",
@@ -320,15 +405,34 @@ def create_app() -> FastAPI:
     async def local_only(request: Request, call_next):
         _ensure_local(request)
         response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store" if request.url.path.startswith("/api/") else "public, max-age=3600"
+        if request.url.path.startswith("/assets/") and response.status_code == 200:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            # SPA HTML must never outlive its content-hashed JS/CSS names. A
+            # cached old index plus a freshly replaced build produces a blank
+            # page because the old bundle no longer exists.
+            response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data: https://*.tiktokcdn.com https://*.tiktok.com; media-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data: https://*.tiktokcdn.com https://*.tiktok.com; font-src 'self' data:; media-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'"
         return response
 
     @app.get("/api/health")
     def health() -> dict:
-        return {"status": "ok", "product": "DUET / SPEAK"}
+        try:
+            connected = ChatGPTAuthManager().status().get("connected") is True
+        except ChatGPTConnectionError:
+            connected = False
+        return {
+            "status": "ok",
+            "product": "DUET / SPEAK",
+            "product_version": PRODUCT_RELEASE,
+            "frontend": "ready" if (FRONTEND / "index.html").is_file() else "missing",
+            "scoring_backend": "ready" if (ROOT / "competition_freeze_v1.json").is_file() else "missing",
+            "api_schema_version": API_SCHEMA_VERSION,
+            "frontend_build": FRONTEND_BUILD_VERSION,
+            "chatgpt_connection": "connected" if connected else "disconnected",
+        }
 
     @app.get("/api/bootstrap")
     def bootstrap() -> dict:
@@ -362,6 +466,7 @@ def create_app() -> FastAPI:
     @app.get("/api/demos/{pair_id}")
     def demo_result(pair_id: str) -> dict:
         item = _demo_item(pair_id)
+        _runtime_log("INFO", "RESULT", f"Frozen demo opened: {pair_id.removeprefix('T001-')}")
         return _serialize_result(item, result_id=pair_id, video_url=f"/api/demos/{pair_id}/video", audio_url=f"/api/demos/{pair_id}/audio")
 
     @app.get("/api/demos/{pair_id}/video")
@@ -391,11 +496,13 @@ def create_app() -> FastAPI:
 
     @app.post("/api/media/upload")
     async def upload_media(file: UploadFile = File(...)) -> dict:
+        _runtime_log("INFO", "MEDIA", "Upload received")
         payload = await file.read(MAX_MEDIA_BYTES + 1)
         if len(payload) > MAX_MEDIA_BYTES:
             raise HTTPException(status_code=413, detail={"code": "file_too_large", "message": "Use a video smaller than 500 MB."})
         try:
             item, created = MediaLibrary().register_upload(file.filename or "completed-duet.mp4", payload)
+            _runtime_log("INFO", "MEDIA", "Video verified and ready")
             return {"item": _serialize_media(item), "created": created}
         except Exception as error:
             raise _public_error(error) from error
@@ -423,9 +530,11 @@ def create_app() -> FastAPI:
         except Exception as error:
             raise _public_error(error) from error
         job_id = f"job_{uuid.uuid4().hex}"
+        assessment_id = job_id.removeprefix("job_")[:6].upper()
         job = {"job_id": job_id, "media_id": media_id, "state": "QUEUED", "message": "Assessment queued"}
         with _jobs_lock:
             _jobs[job_id] = job
+        _runtime_log("INFO", "MEDIA", "Assessment queued", assessment_id)
         threading.Thread(target=_assessment_worker, args=(job_id, media_id), daemon=True).start()
         return deepcopy(job)
 
@@ -529,9 +638,13 @@ def create_app() -> FastAPI:
 
         @app.get("/{full_path:path}")
         def spa(full_path: str):
+            if full_path.startswith("api/"):
+                raise HTTPException(status_code=404, detail="API endpoint not found.")
             candidate = (FRONTEND / full_path).resolve()
             if full_path and candidate.is_file() and candidate.is_relative_to(FRONTEND.resolve()):
                 return FileResponse(candidate)
+            if Path(full_path).suffix:
+                raise HTTPException(status_code=404, detail="Static asset not found.")
             return FileResponse(FRONTEND / "index.html")
 
     return app

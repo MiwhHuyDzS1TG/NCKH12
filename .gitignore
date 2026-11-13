@@ -2,6 +2,8 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+product_frontend/test-results/
+product_frontend/playwright-report/
 *.egg-info/
 build/
 dist/

@@ -135,3 +135,13 @@ The Assessment workspace now supports safe direct upload, official TikTok oEmbed
 Student-facing wording emphasizes `Personalized feedback` and `Evidence-based assessment`. ChatGPT is named only where the user manages the optional connection. The UI does not imply that remote feedback creates official scores. Browser QA covers Home, Assessment, the empty library, and Results at 1366x768 and 1920x1080 with no horizontal overflow or clipped core content.
 
 Product V2 final verification: ChatGPT tests **16 passed**; media tests **17 passed**; competition UI/pipeline tests **19 passed**; full normal suite **168 passed, 2 skipped**; Python compilation passed; Streamlit AppTest passed; real local media I/O smoke passed; and Playwright QA passed at both target resolutions, including the discreet presenter connection panel. The sole warning remains the non-blocking Silero VAD package-resource deprecation notice.
+
+## Competition final local release (2026-11-13)
+
+The primary presenter entrypoint is now `START_NCKH12.bat`. It checks Python, the committed React build, critical frozen configuration and the private local media workspace; binds only to `127.0.0.1`; rejects an unrelated/stale process on port 8765; waits for a release-matched `/api/health`; opens the browser; and keeps safe, timed pipeline activity in one visible terminal. Legacy Streamlit, teacher and research launchers remain unchanged.
+
+The observed white-screen risk was traced to caching SPA HTML for one hour while production builds replace content-hashed JS/CSS filenames. A browser could retain an old index that referenced a removed bundle. SPA HTML/deep links now use `no-store`; hashed assets alone are immutable. Direct/refresh browser tests cover D043, D064 and D048. A top-level Error Boundary, result-contract validation, safe loading/not-found/API-error states and independent media fallbacks prevent featureless pages.
+
+API semantics now preserve real JSON 404 responses for unknown APIs and missing results/media, and real 404 responses for missing assets. CSP permits the bundled local/data fonts without allowing remote font sources. No score, mapping, formula weight, research artifact or privacy boundary changed.
+
+A fresh real saved-media run completed upload, Phase 1, local ASR, Fluency, Reading Completeness, a scientifically valid PARTIAL state, authorized ChatGPT structured feedback accepted by the evidence validator, persistence and React Results. Terminal messages used one short assessment ID and did not print a path, token, transcript, private payload, teacher rating or holdout label. Real public TikTok import remains `PENDING_USER_TEST_URL`.

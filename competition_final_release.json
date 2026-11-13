@@ -1,0 +1,88 @@
+{
+  "release": "COMPETITION_FINAL_RELEASE",
+  "release_date": "2026-11-13",
+  "status": "READY_FOR_COMPETITION",
+  "parent_react_commit": "101d2e85b973f5039ae3ce612a25122ca076e2b3",
+  "release_commit": "RECORDED_BY_GIT_COMMIT_CONTAINING_THIS_MARKER",
+  "parent_product": "COMPETITION_PRODUCT_V3_REACT",
+  "base_freeze": {
+    "version": "COMPETITION_FREEZE_V1",
+    "freeze_file_sha256": "0b73719689c9805de741fedb233ef60eb039a8fc220c0e629ea9640b2f47f50d",
+    "frozen_scorer_sha256": "90755aaa169b605c7b9a070ae411dc28366a2b3e568e4daf2e81dc15a4cee1c1",
+    "target_profile_sha256": "e2a4b2f1ee77860bab9a1a075d07bf61a27fe9ab641a71719dc129def1fb9da2",
+    "scorer_changed": false,
+    "calibration_changed": false,
+    "p25_refit": false,
+    "holdout_touched": false,
+    "machine_intelligibility": false,
+    "new_media_research_membership": false
+  },
+  "versions": {
+    "frontend": "duet-speak-studio-v1",
+    "api_schema": "nckh12-product-api-v1",
+    "criterion_contract": "nckh12-product-criteria-v1",
+    "overall_formula": "nckh12-product-overall-practice-v1",
+    "overall_status": "UNVALIDATED_PRODUCT_COMPOSITE",
+    "launcher": "nckh12-launcher-v1"
+  },
+  "build": {
+    "index": "product_dist/index.html",
+    "index_sha256": "028d82a3b40ec0b6f648762b5cfaaa522a8a36aaa58992786bae78b5a360b9ca",
+    "javascript": "product_dist/assets/index-BA-n24K4.js",
+    "javascript_sha256": "0f8ec581bb99ee1e65773ce6be76bc02a4907b8fcf5503cf43be07de0e38cc35",
+    "css": "product_dist/assets/index-Cq-ROrHs.css",
+    "css_sha256": "abdca7d35e9b768d1688086241aa82d87dc254782aa0c88ef03820e80ea325a8",
+    "api_adapter_sha256": "bab356fc21ca294b429406e0112f7474840a8a7bf936542c20f7c0971b34d949"
+  },
+  "stabilization": {
+    "spa_html_cache": "NO_STORE",
+    "hashed_assets_cache": "IMMUTABLE",
+    "deep_link_routes_verified": [
+      "/",
+      "/assessment",
+      "/recent",
+      "/results/demo/T001-D043",
+      "/results/demo/T001-D064",
+      "/results/demo/T001-D048"
+    ],
+    "react_error_boundary": true,
+    "result_contract_validation": true,
+    "independent_media_fallbacks": true,
+    "localhost_only": true
+  },
+  "verification": {
+    "frontend_unit": "5 passed",
+    "typescript": "PASS",
+    "eslint": "PASS",
+    "production_build": "PASS - 538 modules",
+    "playwright": "8 passed",
+    "focused_python": "77 passed",
+    "full_python": "193 passed, 2 skipped",
+    "python_compilation": "PASS",
+    "real_saved_media_assessment": "PASS - genuine PARTIAL result",
+    "real_authorized_chatgpt_feedback": "PASS - structured response accepted",
+    "private_media_lifecycle": "PASS",
+    "legacy_streamlit": "PASS"
+  },
+  "report_screenshots": {
+    "folder": "ui_evidence/final_release",
+    "safe_review": "PASS",
+    "files": [
+      "01_HOME.png",
+      "02_ASSESSMENT.png",
+      "03_RESULTS_D043.png",
+      "04_RESULTS_EVIDENCE.png",
+      "05_RECENT_VIDEOS.png",
+      "07_MOBILE_RESULTS.png"
+    ],
+    "private_partial_capture": "OMITTED_FOR_PRIVACY"
+  },
+  "known_warnings": [
+    "Vite reports a non-blocking JavaScript chunk-size advisory.",
+    "The third-party Silero VAD package emits a non-blocking importlib-resources deprecation warning."
+  ],
+  "external_pending": [
+    "REAL_TIKTOK_IMPORT:PENDING_USER_TEST_URL"
+  ],
+  "post_freeze_policy": "Only P0 crash, critical security/privacy, incorrect score display, or presentation-blocking fixes are allowed."
+}

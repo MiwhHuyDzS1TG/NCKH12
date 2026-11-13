@@ -16,7 +16,7 @@
   "architecture": {
     "api_schema_version": "nckh12-product-api-v1",
     "criterion_contract_version": "nckh12-product-criteria-v1",
-    "api_adapter_sha256": "48bd8c8eb096a15ce77ab9e7d96e213afe9e937187198d25e9f7995f503f2bce",
+    "api_adapter_sha256": "bab356fc21ca294b429406e0112f7474840a8a7bf936542c20f7c0971b34d949",
     "react": "19.3.1",
     "typescript": "5.9.3",
     "vite": "7.3.8",
@@ -32,11 +32,11 @@
     "research_artifact": false
   },
   "production_build": {
-    "index_sha256": "e9f6d3113c3da55497379b9ea3df7827851d6dafc496d111e8b26d1c65e8f0fd",
-    "javascript": "assets/index-OtP8smqZ.js",
-    "javascript_sha256": "fbb51bce57920ef6858e8b47fb459873752354abc26ef89c259ad277c1fc892b",
-    "css": "assets/index-Bwo6NRW2.css",
-    "css_sha256": "99bb3ee82cc496887b5f9e1be1db835a992f655873feeab06f754cea15fe255c",
+    "index_sha256": "028d82a3b40ec0b6f648762b5cfaaa522a8a36aaa58992786bae78b5a360b9ca",
+    "javascript": "assets/index-BA-n24K4.js",
+    "javascript_sha256": "0f8ec581bb99ee1e65773ce6be76bc02a4907b8fcf5503cf43be07de0e38cc35",
+    "css": "assets/index-Cq-ROrHs.css",
+    "css_sha256": "abdca7d35e9b768d1688086241aa82d87dc254782aa0c88ef03820e80ea325a8",
     "normal_launch_requires_node": false
   },
   "design_asset": {
@@ -62,15 +62,15 @@
   ],
   "verification": {
     "status": "PASS",
-    "frontend_unit": "4 passed",
+    "frontend_unit": "5 passed",
     "frontend_typecheck": "PASS",
     "frontend_lint": "PASS",
-    "frontend_production_build": "PASS - 537 modules",
-    "targeted_python": "74 passed",
-    "full_python": "190 passed, 2 skipped, 1 third-party deprecation warning",
+    "frontend_production_build": "PASS - 538 modules",
+    "targeted_python": "77 passed",
+    "full_python": "193 passed, 2 skipped, 1 third-party deprecation warning",
     "streamlit_apptest_targeted": "46 passed",
     "python_compilation": "PASS",
-    "browser_visual_and_interaction_qa": "PASS - complete and genuine partial Results",
+    "browser_visual_and_interaction_qa": "PASS - 8 Playwright regressions plus desktop/mobile manual audit",
     "real_numpy_assessment_path": "PASS",
     "react_launcher": "PASS",
     "legacy_launcher": "PASS",

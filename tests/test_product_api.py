@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from speaking_evidence import product_api
 from speaking_evidence.competition_demo import DEMO_IDS, load_demo_cache
+from speaking_evidence.media_library import MediaLibrary
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -204,3 +205,57 @@ def test_new_launcher_retains_explicit_legacy_rollback() -> None:
     assert "start_product_studio.ps1" in launcher
     assert "start_competition_demo.ps1" in legacy
     assert "competition_demo" in (ROOT / "scripts/start_competition_demo.ps1").read_text(encoding="utf-8")
+
+
+def test_final_launcher_is_visible_health_gated_and_keeps_legacy_fallback() -> None:
+    batch = (ROOT / "START_NCKH12.bat").read_text(encoding="utf-8")
+    launcher = (ROOT / "scripts/start_nckh12.ps1").read_text(encoding="utf-8")
+    guide = (ROOT / "HOW_TO_RUN_NCKH12.txt").read_text(encoding="utf-8")
+    assert "start_nckh12.ps1" in batch
+    assert "-NoNewWindow" in launcher
+    assert "-WindowStyle Hidden" not in launcher
+    assert "/api/health" in launcher
+    assert "COMPETITION_FINAL_RELEASE" in launcher
+    assert "127.0.0.1" in launcher
+    assert "0.0.0.0" not in launcher
+    assert "Stop-Process -Id $server.Id" in launcher
+    assert "START_COMPETITION_DEMO_LEGACY.bat" in guide
+
+
+def test_health_and_spa_routes_have_release_safe_semantics() -> None:
+    with TestClient(product_api.app) as client:
+        health = client.get("/api/health")
+        assert health.status_code == 200
+        payload = health.json()
+        assert payload["product_version"] == "COMPETITION_FINAL_RELEASE"
+        assert payload["frontend"] == "ready"
+        assert payload["api_schema_version"] == product_api.API_SCHEMA_VERSION
+
+        for route in ("/", "/assessment", "/assess", "/recent",
+                      "/results/demo/T001-D043", "/results/demo/T001-D064",
+                      "/results/demo/T001-D048"):
+            response = client.get(route)
+            assert response.status_code == 200
+            assert response.headers["content-type"].startswith("text/html")
+            assert response.headers["cache-control"] == "no-store"
+            assert '<div id="root"></div>' in response.text
+
+        javascript = next((ROOT / "product_dist/assets").glob("index-*.js"))
+        asset = client.get(f"/assets/{javascript.name}")
+        assert asset.status_code == 200
+        assert "immutable" in asset.headers["cache-control"]
+
+        missing_api = client.get("/api/not-a-real-endpoint")
+        assert missing_api.status_code == 404
+        assert missing_api.headers["content-type"].startswith("application/json")
+        assert client.get("/missing-release-asset.js").status_code == 404
+        missing_hashed_asset = client.get("/assets/missing-release-asset.js")
+        assert missing_hashed_asset.status_code == 404
+        assert missing_hashed_asset.headers["cache-control"] == "no-store"
+
+
+def test_missing_media_and_result_use_not_found_instead_of_internal_error(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(product_api, "MediaLibrary", lambda: MediaLibrary(tmp_path / "library"))
+    with TestClient(product_api.app) as client:
+        assert client.get("/api/media/missing/result").status_code == 404
+        assert client.get("/api/media/missing/video").status_code == 404

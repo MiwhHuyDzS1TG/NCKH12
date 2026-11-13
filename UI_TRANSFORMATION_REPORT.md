@@ -62,13 +62,22 @@ Demo and private thumbnails, transcript and account label are blurred or hidden 
 
 ## Verification and external limitations
 
-Final verification measured: frontend unit **2 passed**, TypeScript **PASS**, ESLint **PASS**, production build **PASS** (537 modules), targeted Python **71 passed**, full Python **187 passed / 2 skipped**, targeted Streamlit AppTest **46 passed**, compilation **PASS**, and browser visual/interaction QA **PASS**. The only warning is the existing third-party Silero VAD package-resource deprecation. The React, legacy Streamlit and Teacher launchers were started for real and returned healthy local routes. ChatGPT is genuinely authorized on this computer; the real assessment retained deterministic fallback because returned wording failed an existing supported-evidence validator, not because of serialization. Real TikTok import remains `PENDING_USER_TEST_URL`; no external import success is claimed without a user-supplied authorized URL.
+Final release verification measured: frontend unit **5 passed**, TypeScript **PASS**, ESLint **PASS**, production build **PASS** (538 modules), focused Python **77 passed**, full Python **193 passed / 2 skipped**, Playwright release regression **8 passed**, compilation **PASS**, and legacy Streamlit coverage **PASS**. The retained warnings are the non-blocking Vite chunk-size advisory and third-party Silero VAD package-resource deprecation. The React, legacy Streamlit and Teacher launch paths remain available. ChatGPT is genuinely authorized on this computer; a real text-only structured feedback request completed and passed the evidence validator without replacing scores. Real TikTok import remains `PENDING_USER_TEST_URL`; no external import success is claimed without a user-supplied authorized URL.
 
 ## Rollback
 
-- New product: double-click `START_COMPETITION_DEMO.bat`.
+- Final product: double-click `START_NCKH12.bat` and keep its visible backend terminal open.
+- Historical/developer React launcher: `START_COMPETITION_DEMO.bat`.
 - Legacy product: double-click `START_COMPETITION_DEMO_LEGACY.bat`.
 - Teacher: `START_TEACHER_RATING.bat`.
 - Research console: existing Streamlit route and launcher behavior remain unchanged.
 
 Removing the React product layer does not require changing the scorer or any research artifact.
+
+## Final release stabilization
+
+The final local release prevents stale-build white screens by serving SPA HTML with `Cache-Control: no-store` while retaining immutable caching only for content-hashed assets. Direct and refreshed D043, D064 and D048 result routes pass at 1920x1080, 1366x768 and 390px with no uncaught browser errors or horizontal overflow. A top-level Error Boundary, validated result contract, explicit loading/not-found/API-error states and media fallbacks ensure a failed subsystem never leaves a featureless page.
+
+The local CSP now permits only the bundled self/data fonts it actually uses, removing the previous browser-console violations. Missing API endpoints and missing static assets remain real 404 responses rather than receiving the SPA document. The primary launcher is `START_NCKH12.bat`; it uses the committed production build, binds only to `127.0.0.1`, waits for release-matched health, opens the browser, and keeps human-readable pipeline events in one visible terminal.
+
+Formal report-ready app-only captures are stored under `ui_evidence/final_release/` with a route, purpose and privacy note for every image. No browser chrome, OAuth identity, private uploaded media, local path, teacher data or holdout material is present.

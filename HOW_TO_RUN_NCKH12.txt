@@ -1,0 +1,15 @@
+NCKH12 SPEAKING COACH
+
+To start:
+1. Double-click START_NCKH12.bat
+2. Keep the backend terminal open
+3. The browser opens automatically
+4. Use Try a Demo or Assessment
+
+To stop:
+Press Ctrl+C in the backend terminal.
+
+If the new interface cannot start:
+Use START_COMPETITION_DEMO_LEGACY.bat
+
+Do not close the backend terminal while using the app.

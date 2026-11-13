@@ -570,7 +570,9 @@ def run_live_analysis(root: Path, duet_path: Path, work_dir: Path,
     notify("Audio quality verified")
     asr_config = yaml.safe_load((root / "p2_config.yaml").read_text(encoding="utf-8"))["asr"]
     asr = FasterWhisperBackend(**asr_config)
+    notify("ASR transcribing")
     transcript = asr.transcribe(audio_path, turn["start_sec"], turn["end_sec"], turn["learner_intervals"])
+    notify("ASR transcript ready")
     fluency_evidence = measure_fluency(turn, transcript["words"])
     target = load_competition_target(root)
     frozen_multipa_target = _load(root / "task_profiles/T001_target_text_v1.json")["confirmed_text"]
