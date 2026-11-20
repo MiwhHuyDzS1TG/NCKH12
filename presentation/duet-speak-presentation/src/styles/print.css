@@ -1,0 +1,37 @@
+.print-deck { display: none; }
+
+@media print {
+  @page { size: 13.333333in 7.5in; margin: 0; }
+  html, body, #root { width: auto; height: auto; overflow: visible; background: white; }
+  .print-deck { display: block; }
+  .print-deck .slide {
+    width: 13.333333in;
+    height: 7.5in;
+    font-size: 9.6pt;
+    break-after: page;
+    page-break-after: always;
+    box-shadow: none;
+  }
+  .print-deck .slide:last-child { break-after: auto; page-break-after: auto; }
+  .fragment { opacity: 1 !important; filter: none !important; transform: none !important; }
+  .wer-scale { background-image: none !important; border-left: 0 !important; }
+  .deck-controls, .progress-line, .overview, .presenter-notes { display: none !important; }
+}
+
+@media screen {
+  .print-deck {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: auto;
+    background: #cbd8e2;
+  }
+  .print-deck .slide {
+    width: 1600px;
+    height: 900px;
+    margin: 24px auto;
+    font-size: 16px;
+    box-shadow: 0 18px 60px rgba(20, 46, 64, .18);
+  }
+  body:has(.print-deck), html:has(.print-deck), #root:has(.print-deck) { overflow: auto; }
+}
